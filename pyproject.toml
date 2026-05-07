@@ -15,7 +15,6 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pyyaml>=6.0.1",
     "rapidfuzz>=3.0.0",
-    "lingua-language-detector>=2.0.2",
     "pipecat-ai[openai,google,ultravox,local]>=1.0.0",
     "simpleaudio>=1.0.4",
     "sounddevice>=0.4.6",

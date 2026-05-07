@@ -7,7 +7,6 @@ from chocopi.audio import AUDIO
 from chocopi.wakeword import WakeWordDetector
 from chocopi.conversation import ConversationSession
 from chocopi.display import create_display_manager
-from chocopi.language import warm_language_detector
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +25,6 @@ class ChocoPi:
             if lang in CONFIG["languages"]
         ]
         self.display = create_display_manager(CONFIG)
-        warm_language_detector()
 
     def _wake_word_language(self, wake_word):
         """Get language configuration based on detected wake word"""
