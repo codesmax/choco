@@ -184,12 +184,17 @@ class ConversationSession:
 
         @user_aggregator.event_handler("on_user_turn_stopped")
         async def on_user_turn_stopped(aggregator, strategy, message: UserTurnStoppedMessage):
+            if not message.content:
+                return
+
             self._record_transcript("user", message.content, "🗣️  You said: %s", "user")
 
             if self.is_greeting:
                 return
 
-            AUDIO.start_playing(CONFIG["sounds"]["sent"])
+            # TODO: play sent sound as a pipeline stage (OutputAudioRawFrame) so it
+            # sequences ahead of the assistant's response audio rather than racing it.
+            # AUDIO.start_playing(CONFIG["sounds"]["sent"])
 
             echo_cfg = self.session_config.get("echo_detection", {})
             if self._is_echo(message.content):
@@ -210,10 +215,12 @@ class ConversationSession:
                 logger.info("💤 Sleep word detected: '%s'", message.content)
                 self.is_terminating = True
 
-            # All providers auto-create responses on turn end (semantic_vad / server_vad).
-
         @assistant_aggregator.event_handler("on_assistant_turn_stopped")
         async def on_assistant_turn_stopped(aggregator, message: AssistantTurnStoppedMessage):
+            if not message.content:
+                logger.debug("⚠️  Empty assistant turn (interrupted=%s)", message.interrupted)
+                return
+
             self._record_transcript("assistant", message.content, "🤖 Choco says: %s", "choco")
 
             if self.is_greeting:

@@ -10,6 +10,7 @@ def create_llm_service(
     provider_config,
     session_instructions,
     transcription_instructions="",
+    initial_message="",
 ):
     """
     Instantiate the Pipecat LLM service for the given provider.
@@ -18,7 +19,7 @@ def create_llm_service(
     if provider_name == "openai":
         return _openai(provider_config, session_instructions, transcription_instructions)
     elif provider_name == "google":
-        return _google(provider_config, session_instructions)
+        return _google(provider_config, session_instructions, initial_message)
     elif provider_name == "ultravox":
         return _ultravox(provider_config, session_instructions)
     else:
@@ -34,9 +35,11 @@ def _openai(config, session_instructions, transcription_instructions):
     simultaneously — local VAD provides fine-grained activity signals while
     semantic turn detection determines response timing.
 
-    No subclassing needed: create_response defaults to true with SemanticTurnDetection,
-    so the server auto-creates responses on turn end. The session handles all turn
-    control through the aggregator event system.
+    Minimal subclass: _truncate_current_audio_response is a no-op to prevent
+    invalid_value server errors on interruption. Pipecat's byte-count tracking
+    can diverge from the server's committed audio duration, causing the server to
+    reject truncation requests with "Audio content Xms is already shorter than Yms".
+    Skipping the truncate event lets the session continue cleanly.
     """
     from pipecat.services.openai.realtime.events import (
         AudioConfiguration,
@@ -47,7 +50,11 @@ def _openai(config, session_instructions, transcription_instructions):
         SemanticTurnDetection,
         SessionProperties,
     )
-    from pipecat.services.openai.realtime.llm import OpenAIRealtimeLLMService
+    from pipecat.services.openai.realtime.llm import OpenAIRealtimeLLMService as _Base
+
+    class OpenAIRealtimeLLMService(_Base):
+        async def _truncate_current_audio_response(self):
+            self._current_audio_response = None
 
     td_params = {k: v for k, v in config.get("turn_detection", {}).items() if k != "type"}
     noise_red = config.get("noise_reduction")
@@ -84,11 +91,30 @@ def _google(config, session_instructions):
     All instructions baked into session_instructions at startup; no per-response
     injection available in Gemini Live.
 
-    Audio gating removed: hardware echo is handled at the PipeWire level (AEC in
-    99-echo-cancel.conf). With local VAD (vad: local in provider config), Silero
-    provides activity signals; Gemini's server-side VAD runs in parallel.
+    VAD: when vad=local, server-side VAD is disabled (GeminiVADParams(disabled=True))
+    and Silero handles turn detection via LLMUserAggregatorParams. This eliminates
+    the echo loop where Gemini's server VAD triggered on speaker output.
+    PipeWire AEC (99-echo-cancel.conf) remains the system-level backstop.
+
+    When vad=server, optional sensitivity tuning is available via vad_settings config:
+      start_sensitivity: low | medium | high
+      end_sensitivity: low | medium | high
+      silence_duration_ms: int
+      prefix_padding_ms: int
     """
-    from pipecat.services.google.gemini_live.llm import GeminiLiveLLMService
+    from pipecat.services.google.gemini_live.llm import GeminiLiveLLMService, GeminiVADParams
+
+    if config.get("vad") == "local":
+        vad = GeminiVADParams(disabled=True)
+    elif vad_cfg := config.get("vad_settings"):
+        vad = GeminiVADParams(
+            start_sensitivity=vad_cfg.get("start_sensitivity"),
+            end_sensitivity=vad_cfg.get("end_sensitivity"),
+            prefix_padding_ms=vad_cfg.get("prefix_padding_ms"),
+            silence_duration_ms=vad_cfg.get("silence_duration_ms"),
+        )
+    else:
+        vad = None
 
     return GeminiLiveLLMService(
         api_key=os.getenv(config["api_key_env"]),
@@ -96,6 +122,7 @@ def _google(config, session_instructions):
         settings=GeminiLiveLLMService.Settings(
             voice=config.get("voice", "Zephyr"),
             system_instruction=session_instructions,
+            vad=vad,
         ),
     )
 
