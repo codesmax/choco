@@ -17,24 +17,25 @@ profiles:
         translations: true
 
 # Active voice provider for conversation sessions
-provider: openai_realtime
+provider: openai
 providers:
-  openai_realtime:
+  openai:
     api_key_env: OPENAI_API_KEY
     model: "gpt-realtime-mini-2025-12-15"
     voice: "marin"
     transcription_model: "gpt-4o-mini-transcribe"
-    noise_reduction: "far_field"   # "near_field" | "far_field" | null
+    noise_reduction: "near_field"  # "near_field" | "far_field" | null
     output_speed: 0.75
+    vad: local
     turn_detection:
-      threshold: 0.3
-      prefix_padding_ms: 300
-      silence_duration_ms: 800
+      type: semantic_vad
+      eagerness: low
 
-  gemini_live:
+  google:
     api_key_env: GOOGLE_API_KEY
     model: "gemini-3.1-flash-live-preview"
     voice: "Zephyr"
+    vad: local
 
   ultravox:
     api_key_env: ULTRAVOX_API_KEY
@@ -65,7 +66,6 @@ languages:
     sleep_word: "bye choco"
 
 session:
-  vad: server             # "server" | "local" (SileroVADAnalyzer)
   greeting_timeout: 5
   conversation_timeout: 90
   sleep_word_threshold: 80

@@ -73,8 +73,8 @@ Python 3.11 is required because `tflite-runtime` (subdependency of `openwakeword
 - **Wake Word Detection**: OpenWakeWord with platform-specific model loading (TFLite on ARM, ONNX elsewhere)
 - **Conversation**: Pipecat pipeline — `LocalAudioTransport.input() → LLM service → ChocoPiProcessor → LocalAudioTransport.output()`. Provider is selected by `provider` in `config.yml`.
 - **Providers** (`providers.py`): factory returns `(service, set_response_instructions_fn)` for each backend:
-  - `openai_realtime` — per-response instructions injected via `response.create.instructions`
-  - `gemini_live` — system instruction set once at session start; dynamic per-turn rules go in `session_instructions`
+  - `openai` — per-response instructions injected via `response.create.instructions`
+  - `google` — system instruction set once at session start; dynamic per-turn rules go in `session_instructions`
   - `ultravox` — same limitation as Gemini; no per-response override channel via Pipecat's current service layer
 - **Signal handling**: `loop.add_signal_handler()` inside `ChocoPi.run()` cancels the main task on SIGINT/SIGTERM, allowing asyncio and Pipecat to unwind cleanly (single Ctrl-C exits)
 - **Audio**:

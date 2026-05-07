@@ -111,8 +111,8 @@ Set `provider` in `config.yml` to switch between backends:
 
 | Provider | `provider` value | Required dep |
 |---|---|---|
-| OpenAI Realtime | `openai_realtime` | `pipecat-ai[openai]` (default) |
-| Google Gemini Live | `gemini_live` | `pipecat-ai[google]` |
+| OpenAI Realtime | `openai` | `pipecat-ai[openai]` (default) |
+| Google Gemini Live | `google` | `pipecat-ai[google]` |
 | Ultravox | `ultravox` | `pipecat-ai[ultravox]` |
 
 Each provider has its own section in `config.yml` for API key, model, voice, and turn-detection settings.

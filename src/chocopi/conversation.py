@@ -78,10 +78,7 @@ class ConversationSession:
         self.transcript_log = []
         self.session_start_time = None
         self._consecutive_echo_turns = 0
-        self._use_local_vad = self.session_config.get("vad", "server") == "local"
-        # OpenAI uses create_response=False so responses must be triggered manually
-        # after on_user_turn_stopped; Gemini/Ultravox use server VAD and auto-respond.
-        self._manual_response = PROVIDER == "openai_realtime"
+        self._use_local_vad = provider_config.get("vad", "server") == "local"
 
         native_language = CONFIG["languages"][profile["native_language"]]["language_name"]
         self.instruction_params = {
@@ -99,13 +96,12 @@ class ConversationSession:
         )
 
         memory_block = build_memory_block(self.memory)
-        greeting = CONFIG["prompts"]["greeting"].format(**self.instruction_params)
-        session_body = CONFIG["prompts"]["session"].format(
+        self._session_instructions = CONFIG["prompts"]["session"].format(
             **self.instruction_params,
             memory_block=memory_block,
             translation_instruction=translation_instruction,
         )
-        self._session_instructions = f"# Opening\n{greeting}\n\n{session_body}"
+        self._greeting_message = CONFIG["prompts"]["greeting"].format(**self.instruction_params)
         logger.debug("⚙️  Session instructions: %s", self._session_instructions)
 
         transcription_instructions = CONFIG["prompts"]["transcription"].format(**self.instruction_params)
@@ -115,7 +111,6 @@ class ConversationSession:
             provider_config,
             self._session_instructions,
             transcription_instructions,
-            use_local_vad=self._use_local_vad,
         )
 
     # --- Transcript helpers ---
@@ -168,7 +163,9 @@ class ConversationSession:
             from pipecat.audio.vad.silero import SileroVADAnalyzer
             vad_params = LLMUserAggregatorParams(vad_analyzer=SileroVADAnalyzer())
 
-        context = LLMContext()
+        # Seed the conversation with the greeting instruction as the first user turn.
+        # All providers respond to this naturally; no provider-specific greeting logic needed.
+        context = LLMContext([{"role": "user", "content": self._greeting_message}])
         user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
             context,
             user_params=vad_params,
@@ -213,8 +210,7 @@ class ConversationSession:
                 logger.info("💤 Sleep word detected: '%s'", message.content)
                 self.is_terminating = True
 
-            if self._manual_response:
-                await task.queue_frames([LLMRunFrame()])
+            # All providers auto-create responses on turn end (semantic_vad / server_vad).
 
         @assistant_aggregator.event_handler("on_assistant_turn_stopped")
         async def on_assistant_turn_stopped(aggregator, message: AssistantTurnStoppedMessage):
