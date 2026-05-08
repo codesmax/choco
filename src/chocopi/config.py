@@ -47,7 +47,7 @@ IS_PI = platform.machine().lower() in ['aarch64', 'armv7l']
 LOG_LEVEL = os.getenv('CHOCO_LOG', 'INFO').upper()
 USE_DISPLAY = os.getenv('CHOCO_DISPLAY', '0') == '1' and _has_display()
 PROFILE = os.getenv('CHOCO_PROFILE', CONFIG.get('profile', 'default'))
-PROVIDER = os.getenv('CHOCO_PROVIDER', CONFIG.get('provider', 'openai_realtime'))
+PROVIDER = os.getenv('CHOCO_PROVIDER', CONFIG.get('provider', 'openai'))
 
 # Configure logging
 logging.basicConfig(format='[%(levelname)s:%(name)s] %(message)s', level=logging.WARNING)  # Silence third-party libraries

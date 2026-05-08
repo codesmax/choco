@@ -8,30 +8,39 @@ profiles:
     learning_languages:
       ko:
         comprehension_age: 2
+        translations: true
       es:
         comprehension_age: 2
+        translations: true
       zh:
         comprehension_age: 2
+        translations: true
 
 # Active voice provider for conversation sessions
-provider: openai_realtime
+provider: "openai"
 providers:
-  openai_realtime:
-    api_key_env: OPENAI_API_KEY
+  openai:
+    api_key_env: "OPENAI_API_KEY"
     model: "gpt-realtime-mini-2025-12-15"
     voice: "marin"
     transcription_model: "gpt-4o-mini-transcribe"
-    noise_reduction: "far_field"   # "near_field" | "far_field" | null
+    noise_reduction: "near_field"  # "near_field" | "far_field" | null
     output_speed: 0.75
+    vad: "local"
     turn_detection:
-      threshold: 0.3
-      prefix_padding_ms: 300
-      silence_duration_ms: 800
+      type: "semantic_vad"
+      eagerness: "low"
 
-  gemini_live:
-    api_key_env: GOOGLE_API_KEY
+  google:
+    api_key_env: "GOOGLE_API_KEY"
     model: "gemini-3.1-flash-live-preview"
     voice: "Zephyr"
+    vad: "server"
+    vad_settings:
+      start_sensitivity: "START_SENSITIVITY_LOW"
+      end_sensitivity: "END_SENSITIVITY_LOW"
+      prefix_padding_ms: 300
+      silence_duration_ms: 800
 
   ultravox:
     api_key_env: ULTRAVOX_API_KEY
@@ -62,7 +71,6 @@ languages:
     sleep_word: "bye choco"
 
 session:
-  greeting_timeout: 5
   conversation_timeout: 90
   sleep_word_threshold: 80
   echo_detection:
@@ -109,7 +117,11 @@ prompts:
     # Response
     - Try to keep responses to 2-4 sentences. Exception for stories. End with a question.
     - Always respond in {learning_language} first, using vocabulary appropriate for a {comprehension_age}-year-old native {learning_language} speaker.
-    - If the user's last message is primarily in {native_language}, add a translation of your full response into {native_language}.
+
+    {translation_instruction}
+
+    # Sleep Word
+    When the user says the sleep word ("{sleep_word}"), respond with a brief, warm goodbye in {learning_language} only.
 
     # Safety
     - If asked for inappropriate content, refuse briefly and redirect to something fun.
@@ -124,16 +136,8 @@ prompts:
     - Prefer novelty and steady progress when introducing new material.
   transcription: >
     - Expect casual speech from a child in {native_language} and {learning_language}.
-  response: >
-    - Your name is Choco. If asked your name, answer "Choco".
-    - Try to keep responses to 2-4 sentences. Exception for stories. End with a question.
-    - Respond in {learning_language} using vocabulary appropriate for a {comprehension_age}-year-old native speaker.
-    - Provide corrections in {native_language} only when the user makes a mistake.
-    {translation_prompt}
   greeting: >
-    Greet the user with up to 5 words in {learning_language}. Keep it brief.
-  goodbye: >
-    User said the sleep word. Respond with a brief goodbye in {learning_language} only.
+    Greet the user with up to 5 words in {learning_language}. Keep it brief and warm.
   summary: >
     Summarize the session in {native_language}. Use 3-6 sentences and include progress, interests, corrections, and novelty.
     Return structured JSON matching the provided schema.
