@@ -3,11 +3,11 @@ name = "chocopi"
 version = "0.1.0"
 description = "Voice-powered language tutor for kids, built for Raspberry Pi"
 authors = [
-    {name = "Max Lee", email = "2389838+codesmax@users.noreply.github.com"}
+    { name = "Max Lee", email = "2389838+codesmax@users.noreply.github.com" },
 ]
-license = {text = "MIT"}
+license = { text = "MIT" }
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "numpy>=1.26.4,<2.0",
     "openwakeword>=0.6.0",

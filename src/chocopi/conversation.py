@@ -164,7 +164,6 @@ class ConversationSession:
             vad_params = LLMUserAggregatorParams(vad_analyzer=SileroVADAnalyzer())
 
         # Seed the conversation with the greeting instruction as the first user turn.
-        # All providers respond to this naturally; no provider-specific greeting logic needed.
         context = LLMContext([{"role": "user", "content": self._greeting_message}])
         user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
             context,

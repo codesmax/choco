@@ -118,8 +118,8 @@ def _google(config, session_instructions):
 
     return GeminiLiveLLMService(
         api_key=os.getenv(config["api_key_env"]),
-        model=config.get("model", "gemini-3.1-flash-live-preview"),
         settings=GeminiLiveLLMService.Settings(
+            model=config.get("model", "gemini-3.1-flash-live-preview"),
             voice=config.get("voice", "Zephyr"),
             system_instruction=session_instructions,
             vad=vad,
