@@ -176,12 +176,11 @@ chocopi                     # Bash entry point
 src/chocopi/                # Python package
   chocopi.py                #   Main orchestrator + signal handling
   wakeword.py               #   Wake word detection
-  conversation.py           #   Pipecat pipeline + ChocoPiProcessor
+  conversation.py           #   Pipecat pipeline + turn logic
   providers.py              #   LLM service factories (OpenAI, Gemini, Ultravox)
   audio.py                  #   Audio I/O
   display.py                #   Optional pygame-ce UI
   memory.py                 #   Session memory persistence
-  language.py               #   Language detection
   config.py                 #   Config and env loading
 config.yml                  # Runtime configuration
 models/                     # Wake word models (.tflite + .onnx)
@@ -189,6 +188,7 @@ assets/                     # Sounds, images, fonts
 install/                    # Service configs (installers live at repo root)
   systemd/                  #   Systemd service (Pi)
   wireplumber/              #   WirePlumber Bluetooth configs
+  pipewire/                 #   PipeWire echo cancel config
 data/                       # Per-profile memory files (gitignored)
 ```
 

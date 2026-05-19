@@ -4,11 +4,15 @@ import logging
 import re
 import time
 
+import wave
+
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
     EndFrame,
+    LLMContextFrame,
     LLMRunFrame,
+    OutputAudioRawFrame,
 )
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
@@ -25,8 +29,7 @@ from pipecat.processors.frame_processor import FrameProcessor
 from pipecat.transports.local.audio import LocalAudioTransport, LocalAudioTransportParams
 from rapidfuzz import fuzz
 
-from chocopi.audio import AUDIO
-from chocopi.config import CONFIG, PROVIDER
+from chocopi.config import CONFIG, PROVIDER, SOUNDS_PATH
 from chocopi.memory import (
     build_memory_block,
     load_memory,
@@ -37,6 +40,42 @@ from chocopi.memory import (
 from chocopi.providers import create_llm_service
 
 logger = logging.getLogger(__name__)
+
+
+def _load_sound_frame(filename: str) -> OutputAudioRawFrame | None:
+    """Load a WAV file as an OutputAudioRawFrame. File must be 24kHz mono PCM."""
+    path = SOUNDS_PATH / filename
+    try:
+        with wave.open(str(path)) as wf:
+            return OutputAudioRawFrame(
+                audio=wf.readframes(-1),
+                sample_rate=wf.getframerate(),
+                num_channels=wf.getnchannels(),
+            )
+    except Exception as exc:
+        logger.warning("Could not preload sound %s: %s", filename, exc)
+        return None
+
+
+class _SentSoundProcessor(FrameProcessor):
+    """Injects the sent-sound frame before LLMContextFrame reaches the LLM.
+
+    Intercepts LLMContextFrame (emitted by user_aggregator when a user turn
+    ends) and pushes the sound first, guaranteeing it plays before the first
+    LLM audio frame. Skipped during the greeting turn (is_greeting=True) since
+    LLMRunFrame also triggers LLMContextFrame.
+    """
+
+    def __init__(self, session, frame: OutputAudioRawFrame | None):
+        super().__init__()
+        self._session = session
+        self._frame = frame
+
+    async def process_frame(self, frame, direction):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, LLMContextFrame) and not self._session.is_greeting and self._frame:
+            await self.push_frame(self._frame)
+        await self.push_frame(frame, direction)
 
 
 class _DisplaySync(FrameProcessor):
@@ -81,7 +120,7 @@ class ConversationSession:
         self._use_local_vad = provider_config.get("vad", "server") == "local"
 
         native_language = CONFIG["languages"][profile["native_language"]]["language_name"]
-        self.instruction_params = {
+        params = {
             "user_age": profile["user_age"],
             "native_language": native_language,
             "learning_language": self.lang_config["language_name"],
@@ -97,14 +136,14 @@ class ConversationSession:
 
         memory_block = build_memory_block(self.memory)
         self._session_instructions = CONFIG["prompts"]["session"].format(
-            **self.instruction_params,
+            **params,
             memory_block=memory_block,
             translation_instruction=translation_instruction,
         )
-        self._greeting_message = CONFIG["prompts"]["greeting"].format(**self.instruction_params)
+        self._greeting_message = CONFIG["prompts"]["greeting"].format(**params)
         logger.debug("⚙️  Session instructions: %s", self._session_instructions)
 
-        transcription_instructions = CONFIG["prompts"]["transcription"].format(**self.instruction_params)
+        transcription_instructions = CONFIG["prompts"]["transcription"].format(**params)
 
         self._llm_service = create_llm_service(
             PROVIDER,
@@ -112,6 +151,8 @@ class ConversationSession:
             self._session_instructions,
             transcription_instructions,
         )
+
+        self._sent_frame = _load_sound_frame(CONFIG["sounds"]["sent"])
 
     # --- Transcript helpers ---
 
@@ -173,7 +214,7 @@ class ConversationSession:
             ),
         )
 
-        pipeline_stages = [transport.input(), user_aggregator, self._llm_service]
+        pipeline_stages = [transport.input(), user_aggregator, _SentSoundProcessor(self, self._sent_frame), self._llm_service]
         if self.display:
             pipeline_stages.append(_DisplaySync(self.display))
         pipeline_stages.extend([transport.output(), assistant_aggregator])
@@ -190,10 +231,6 @@ class ConversationSession:
 
             if self.is_greeting:
                 return
-
-            # TODO: play sent sound as a pipeline stage (OutputAudioRawFrame) so it
-            # sequences ahead of the assistant's response audio rather than racing it.
-            # AUDIO.start_playing(CONFIG["sounds"]["sent"])
 
             echo_cfg = self.session_config.get("echo_detection", {})
             if self._is_echo(message.content):

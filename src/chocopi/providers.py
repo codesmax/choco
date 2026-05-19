@@ -10,7 +10,6 @@ def create_llm_service(
     provider_config,
     session_instructions,
     transcription_instructions="",
-    initial_message="",
 ):
     """
     Instantiate the Pipecat LLM service for the given provider.
@@ -19,7 +18,7 @@ def create_llm_service(
     if provider_name == "openai":
         return _openai(provider_config, session_instructions, transcription_instructions)
     elif provider_name == "google":
-        return _google(provider_config, session_instructions, initial_message)
+        return _google(provider_config, session_instructions)
     elif provider_name == "ultravox":
         return _ultravox(provider_config, session_instructions)
     else:
@@ -94,7 +93,6 @@ def _google(config, session_instructions):
     VAD: when vad=local, server-side VAD is disabled (GeminiVADParams(disabled=True))
     and Silero handles turn detection via LLMUserAggregatorParams. This eliminates
     the echo loop where Gemini's server VAD triggered on speaker output.
-    PipeWire AEC (99-echo-cancel.conf) remains the system-level backstop.
 
     When vad=server, optional sensitivity tuning is available via vad_settings config:
       start_sensitivity: low | medium | high

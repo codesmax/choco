@@ -1,7 +1,7 @@
 # Agent Instructions
 
 This is a voice assistant project called **ChocoPi** — a Raspberry Pi-focused language tutor for kids.
-It detects wake words on-device with OpenWakeWord, then runs live voice conversations via the OpenAI Realtime API.
+It detects wake words on-device with OpenWakeWord, then runs live voice conversations via a configurable LLM provider (OpenAI Realtime by default; Gemini Live and Ultravox also supported).
 Sessions are language-targeted (English, Korean, Spanish, Chinese) and can end via a language-specific sleep word.
 Session history is summarized and persisted to memory files for continuity across conversations.
 
@@ -26,7 +26,7 @@ There is no standalone script at the repo root — `./chocopi` is a bash wrapper
 uv venv .venv --python 3.11
 source .venv/bin/activate
 uv pip install -e .
-cp .env.example .env   # then add your OPENAI_API_KEY
+cp .env.example .env   # then add your API key
 ```
 
 Python 3.11 is required because `tflite-runtime` (subdependency of `openwakeword`) has no wheels for 3.12+.
@@ -34,13 +34,14 @@ Python 3.11 is required because `tflite-runtime` (subdependency of `openwakeword
 ## Runtime Flow
 
 1. `./chocopi` sets environment defaults, activates `.venv`, and runs `python -m chocopi`.
-2. `src/chocopi/chocopi.py` initializes config, wake-word detector, optional display, and language detector warmup.
+2. `src/chocopi/chocopi.py` initializes config, wake-word detector, and optional display.
 3. App loop waits in `WakeWordDetector.listen()`.
 4. On wake word, it maps the detected model to a learning language and starts `ConversationSession`.
-5. `ConversationSession` opens Realtime websocket, sends `session.update`, requests greeting, then streams mic audio.
-6. Server VAD events drive turn taking; transcript completion triggers a response request with dynamic instructions.
-7. Response audio is buffered and played locally; display state and transcript panel update in parallel.
-8. On sleep word, timeout, or error, session stops, transcripts are summarized, and memory is written to disk.
+5. `ConversationSession.__init__` builds session instructions (profile + memory), creates the LLM service, and seeds an `LLMContext` with a greeting instruction as the first user turn.
+6. `ConversationSession.run()` assembles the Pipecat pipeline, registers event handlers on the aggregators, then queues `LLMRunFrame` to trigger the greeting.
+7. `on_user_turn_stopped` fires after each user turn: logs transcript, runs echo/sleep-word detection.
+8. `on_assistant_turn_stopped` fires after each assistant turn: logs transcript, marks end of greeting phase, queues `EndFrame` on termination.
+9. On session end, `chocopi.py` plays the bye sound, calls `session.persist_memory()` to summarize and write memory to disk.
 
 ## Key Files
 
@@ -50,43 +51,87 @@ Python 3.11 is required because `tflite-runtime` (subdependency of `openwakeword
 | `src/chocopi/__main__.py` | Module entry point — imports and calls `main()` |
 | `src/chocopi/chocopi.py` | Top-level orchestrator and graceful shutdown |
 | `src/chocopi/wakeword.py` | OpenWakeWord model loading and inference loop |
-| `src/chocopi/conversation.py` | Pipecat pipeline setup, `ChocoPiProcessor`, `ConversationSession` |
+| `src/chocopi/conversation.py` | Pipecat pipeline setup and `ConversationSession` with event-handler-based turn logic |
 | `src/chocopi/providers.py` | Pipecat LLM service factories (OpenAI Realtime, Gemini Live, Ultravox) |
 | `src/chocopi/audio.py` | Shared input/output audio manager (wakeword + conversation) |
 | `src/chocopi/display.py` | Pygame-ce UI (sprites + transcript pane), enabled by `CHOCO_DISPLAY=1` |
 | `src/chocopi/memory.py` | Session summary (via gpt-4.1-nano), memory merge, YAML persistence |
-| `src/chocopi/language.py` | Lingua-based language detector for deciding whether translation is needed |
+| `src/chocopi/language.py` | Stub (no-op) — language detection removed |
 | `src/chocopi/config.py` | Global config/env loading, platform detection, path constants |
 | `config.yml` | Primary runtime configuration (profiles, languages, prompts, model settings) |
 
 ## Configuration
 
-- **Secrets:** `OPENAI_API_KEY` in `.env`, loaded by `python-dotenv`.
+- **Secrets:** Provider API keys in `.env`, loaded by `python-dotenv`.
 - **Runtime config:** `config.yml` — read at import time by `config.py`.
 - **Active profile:** `profile` key in `config.yml`.
+- **Active provider:** `provider` key in `config.yml` (`openai` | `google` | `ultravox`).
 - **Wake-word models:** each `languages.<code>.model` must match files in `models/` (`.tflite` on ARM, `.onnx` elsewhere).
-- **Realtime model and request schemas:** `openai` section in `config.yml`.
 - **Session memory:** stored under `data/memory_<profile>.yml`.
 
 ## Architecture
 
-- **Wake Word Detection**: OpenWakeWord with platform-specific model loading (TFLite on ARM, ONNX elsewhere)
-- **Conversation**: Pipecat pipeline — `LocalAudioTransport.input() → LLM service → ChocoPiProcessor → LocalAudioTransport.output()`. Provider is selected by `provider` in `config.yml`.
-- **Providers** (`providers.py`): factory returns `(service, set_response_instructions_fn)` for each backend:
-  - `openai` — per-response instructions injected via `response.create.instructions`
-  - `google` — system instruction set once at session start; dynamic per-turn rules go in `session_instructions`
-  - `ultravox` — same limitation as Gemini; no per-response override channel via Pipecat's current service layer
-- **Signal handling**: `loop.add_signal_handler()` inside `ChocoPi.run()` cancels the main task on SIGINT/SIGTERM, allowing asyncio and Pipecat to unwind cleanly (single Ctrl-C exits)
-- **Audio**:
-  - Recording: `sounddevice` → PortAudio → ALSA → PipeWire (Linux) or CoreAudio (macOS)
-  - Playback: `simpleaudio` (can run simultaneously with recording)
-  - `pipewire-alsa` provides ALSA compatibility layer on Linux
-  - WirePlumber manages device routing and Bluetooth profiles
-- **Bluetooth**: HSP/HFP profile for bidirectional audio (mic + speaker)
-- **Interruption**: Server-side VAD detects user speech to interrupt AI responses
-- **Sleep word**: Fuzzy matching via `rapidfuzz.partial_ratio` with configurable threshold
-- **Language detection**: `lingua-language-detector` identifies user language for translation/correction
-- **Display**: Optional pygame-ce UI with sprite animations and transcript panel (`CHOCO_DISPLAY=1`)
+### Pipeline
+
+```
+LocalAudioTransport.input()
+  → user_aggregator       (LLMContextAggregatorPair)
+  → LLM service           (provider-specific)
+  → _DisplaySync          (FrameProcessor, only when display is enabled)
+  → LocalAudioTransport.output()
+  → assistant_aggregator  (LLMContextAggregatorPair)
+```
+
+- `ConversationSession` owns the pipeline; runs it via `PipelineRunner(handle_sigint=False)`.
+- No custom frame processor for turn logic — everything lives in event handlers registered on the aggregators.
+- `enable_auto_context_summarization=True` on `LLMAssistantAggregatorParams` (server-side, 8k tokens / 20 messages default).
+
+### Event Handlers
+
+- `user_aggregator.on_user_turn_stopped` — transcript arrives → queues sent-sound `OutputAudioRawFrame` → echo/sleep-word detection
+- `assistant_aggregator.on_assistant_turn_stopped` — log transcript, mark greeting end, queue `EndFrame` after termination
+- `_DisplaySync.process_frame` — catches upstream `BotStartedSpeakingFrame` / `BotStoppedSpeakingFrame` → `display.set_speaking(True/False)`
+
+### Greeting Flow
+
+- `LLMContext([{"role": "user", "content": greeting_message}])` seeds the context for all providers.
+- `task.queue_frames([LLMRunFrame()])` triggers the initial response.
+- `on_assistant_turn_stopped` with `is_greeting=True` → sets `is_greeting=False`, starts session timer.
+
+### Termination Flow
+
+- Sleep word or echo loop → `is_terminating = True` in `on_user_turn_stopped`.
+- Conversation proceeds naturally (session instructions tell the assistant to say goodbye on sleep word).
+- `on_assistant_turn_stopped` with `is_terminating=True` → queues `EndFrame`.
+
+### Providers (`providers.py`)
+
+`create_llm_service(provider_name, provider_config, session_instructions, transcription_instructions="")` returns a configured service instance.
+
+All session instructions are baked in at startup — no per-response injection. Translation is a static flag per profile (`profiles.<name>.learning_languages.<lang>.translations: true/false`), injected into session instructions once.
+
+**`openai`**: Minimal subclass — `_truncate_current_audio_response` is a no-op to prevent `invalid_value` server errors when Pipecat's byte-count tracking diverges from the server's committed audio duration on interruption. Uses `SemanticTurnDetection` for server-side turn completion; optional local `SileroVADAnalyzer` runs simultaneously when `vad: local` is set.
+
+**`google`**: No subclass needed. `GeminiVADParams(disabled=True)` set when `vad: local` to eliminate the echo loop where Gemini's server VAD triggers on speaker output; Silero handles turn detection instead. Optional `vad_settings` keys (`start_sensitivity`, `end_sensitivity`, `silence_duration_ms`, `prefix_padding_ms`) tune server VAD when `vad: server`.
+
+**`ultravox`**: Minimal subclass — `_selected_tools` `hasattr` guard prevents `AttributeError` in `_start_one_shot_call` (upstream Pipecat bug: `_selected_tools` only set when `one_shot_selected_tools` is passed, but unconditionally evaluated).
+
+### Signal Handling
+
+`loop.add_signal_handler()` inside `ChocoPi.run()` cancels the main task on SIGINT/SIGTERM, allowing asyncio and Pipecat to unwind cleanly (single Ctrl-C exits).
+
+### Audio
+
+- Recording: `sounddevice` → PortAudio → ALSA → PipeWire (Linux) or CoreAudio (macOS)
+- Playback: `simpleaudio` (runs simultaneously with recording)
+- `pipewire-alsa` provides ALSA compatibility layer on Linux
+- WirePlumber manages device routing and Bluetooth profiles
+- PipeWire echo cancel module (`99-echo-cancel.conf`) provides WebRTC AEC as system-level backstop on Linux
+- Echo/feedback loop detection: `_is_echo()` flags user turns ≤ 4 words with high overlap to the last assistant response; session ends after 5 consecutive echo turns
+
+### Display
+
+Optional pygame-ce UI with sprite animations and transcript panel (`CHOCO_DISPLAY=1`). `_DisplaySync` sits between the LLM service and the output transport to intercept upstream speaking frames and drive display state.
 
 ## Cross-Platform Notes
 
@@ -112,6 +157,7 @@ Python 3.11 is required because `tflite-runtime` (subdependency of `openwakeword
 | `install/systemd/chocopi.service` | Systemd service definition (Pi) |
 | `install/wireplumber/51-bluetooth-audio.lua` | WirePlumber Bluetooth HSP/HFP profile config |
 | `install/wireplumber/51-bluetooth-audio.conf` | WirePlumber logind integration config |
+| `install/pipewire/99-echo-cancel.conf` | PipeWire WebRTC AEC module config |
 
 ## Audio Debugging
 
@@ -130,13 +176,12 @@ sudo journalctl -u chocopi -f   # Service logs on Pi
 
 Managed via `pyproject.toml` (no `requirements.txt`). Key packages:
 
+- `pipecat-ai[openai,google,ultravox,local]` — voice pipeline + all providers
 - `openwakeword` — wake word detection
 - `sounddevice` / `soundfile` — audio recording and file I/O
 - `simpleaudio` — audio playback
-- `websockets>=13.0` — OpenAI Realtime API connection
 - `pygame-ce` — optional visual display
 - `rapidfuzz` — fuzzy sleep-word matching
-- `lingua-language-detector` — user language identification
 - `numpy>=1.26.4,<2.0` — required for tflite-runtime compatibility
 - `python-dotenv` — `.env` file loading
 - `pyyaml` — config file parsing
@@ -144,14 +189,12 @@ Managed via `pyproject.toml` (no `requirements.txt`). Key packages:
 ## Behavior Notes
 
 - Audio manager is global (`AUDIO`) and shared across wakeword and conversation phases.
-- Greeting has a shorter timeout than normal conversation (`session.greeting_timeout` vs `session.conversation_timeout`).
-- Sleep-word detection uses fuzzy matching (`rapidfuzz.partial_ratio`) with configurable threshold.
 - If summarization fails, memory still updates via fallback using last transcript snippets.
 - Display is optional; app runs headless without it.
+- `CHOCO_PROFILE` and `CHOCO_PROVIDER` env vars override `config.yml` at runtime.
 
 ## Change Guidelines
 
-- Preserve the event contract in `conversation.py` when updating Realtime handling.
 - Provider-specific logic belongs in `providers.py`, not in `conversation.py`.
 - Keep audio side effects explicit; avoid introducing competing streams.
 - Maintain compatibility between `config.yml` structure and code lookups before renaming keys.
