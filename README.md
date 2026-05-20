@@ -153,9 +153,9 @@ sudo journalctl -u chocopi -f   # View logs
 ### Environment flags
 
 ```bash
-CHOCO_LOG=DEBUG ./chocopi          # verbose logging (default: INFO)
+CHOCO_LOG_LEVEL=DEBUG ./chocopi          # verbose logging (default: INFO)
 CHOCO_DISPLAY=0 ./chocopi         # disable pygame-ce UI (default: enabled)
-CHOCO_LOG=DEBUG CHOCO_DISPLAY=0 ./chocopi
+CHOCO_LOG_LEVEL=DEBUG CHOCO_DISPLAY=0 ./chocopi
 ```
 
 ### Audio debugging

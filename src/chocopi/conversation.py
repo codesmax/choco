@@ -14,9 +14,10 @@ from pipecat.frames.frames import (
     LLMRunFrame,
     OutputAudioRawFrame,
 )
+from pipecat.observers.loggers.transcription_log_observer import TranscriptionLogObserver
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
-from pipecat.pipeline.task import PipelineTask
+from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
     AssistantTurnStoppedMessage,
@@ -117,7 +118,7 @@ class ConversationSession:
         self.transcript_log = []
         self.session_start_time = None
         self._consecutive_echo_turns = 0
-        self._use_local_vad = provider_config.get("vad", "server") == "local"
+        self._use_local_vad = provider_config.get("vad", {}).get("local", False)
 
         native_language = CONFIG["languages"][profile["native_language"]]["language_name"]
         params = {
@@ -157,9 +158,9 @@ class ConversationSession:
     # --- Transcript helpers ---
 
     def _is_echo(self, transcript: str) -> bool:
-        echo_cfg = self.session_config.get("echo_detection", {})
-        max_words = echo_cfg.get("max_words", 4)
-        threshold = echo_cfg.get("overlap_threshold", 80)
+        echo_config = self.session_config.get("echo_detection", {})
+        max_words = echo_config.get("max_words", 4)
+        threshold = echo_config.get("overlap_threshold", 80)
         if not transcript or not self.last_assistant_transcript:
             return False
         if len(transcript.split()) > max_words:
@@ -220,7 +221,15 @@ class ConversationSession:
         pipeline_stages.extend([transport.output(), assistant_aggregator])
 
         pipeline = Pipeline(pipeline_stages)
-        task = PipelineTask(pipeline)
+        task = PipelineTask(
+            pipeline,
+            params=PipelineParams(
+                enable_metrics=True,
+                enable_usage_metrics=True,
+            ),
+            idle_timeout_secs=self.session_config["conversation_timeout"],
+            observers=[TranscriptionLogObserver()],
+        )
 
         @user_aggregator.event_handler("on_user_turn_stopped")
         async def on_user_turn_stopped(aggregator, strategy, message: UserTurnStoppedMessage):
@@ -232,14 +241,14 @@ class ConversationSession:
             if self.is_greeting:
                 return
 
-            echo_cfg = self.session_config.get("echo_detection", {})
+            echo_config = self.session_config.get("echo_detection", {})
             if self._is_echo(message.content):
                 self._consecutive_echo_turns += 1
                 logger.debug(
                     "🔁 Echo candidate (%d/%d): '%s'",
-                    self._consecutive_echo_turns, echo_cfg.get("consecutive_limit", 5), message.content,
+                    self._consecutive_echo_turns, echo_config.get("consecutive_limit", 5), message.content,
                 )
-                if self._consecutive_echo_turns >= echo_cfg.get("consecutive_limit", 5):
+                if self._consecutive_echo_turns >= echo_config.get("consecutive_limit", 5):
                     logger.warning("🔁 Echo loop detected after %d turns", self._consecutive_echo_turns)
                     self.is_terminating = True
             else:

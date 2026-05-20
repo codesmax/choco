@@ -44,7 +44,7 @@ load_dotenv(PROJECT_ROOT / '.env')
 
 # Environment
 IS_PI = platform.machine().lower() in ['aarch64', 'armv7l']
-LOG_LEVEL = os.getenv('CHOCO_LOG', 'INFO').upper()
+LOG_LEVEL = os.getenv('CHOCO_LOG_LEVEL', 'INFO').upper()
 USE_DISPLAY = os.getenv('CHOCO_DISPLAY', '0') == '1' and _has_display()
 PROFILE = os.getenv('CHOCO_PROFILE', CONFIG.get('profile', 'default'))
 PROVIDER = os.getenv('CHOCO_PROVIDER', CONFIG.get('provider', 'openai'))

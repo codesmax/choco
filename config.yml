@@ -26,21 +26,28 @@ providers:
     transcription_model: "gpt-4o-mini-transcribe"
     noise_reduction: "near_field"  # "near_field" | "far_field" | null
     output_speed: 0.75
-    vad: "local"
-    turn_detection:
-      type: "semantic_vad"
-      eagerness: "low"
+    vad:
+      local: true
+      server:
+        type: "semantic_vad"  # "semantic_vad" | "server_vad"
+        semantic_vad:
+          eagerness: "low"
+        server_vad:
+          threshold: 0.3
+          prefix_padding_ms: 300
+          silence_duration_ms: 1200
 
   google:
     api_key_env: "GOOGLE_API_KEY"
     model: "gemini-3.1-flash-live-preview"
     voice: "Zephyr"
-    vad: "server"
-    vad_settings:
-      start_sensitivity: "START_SENSITIVITY_LOW"
-      end_sensitivity: "END_SENSITIVITY_LOW"
-      prefix_padding_ms: 300
-      silence_duration_ms: 800
+    vad:
+      local: false
+      server:
+        start_sensitivity: "START_SENSITIVITY_LOW"
+        end_sensitivity: "END_SENSITIVITY_LOW"
+        prefix_padding_ms: 300
+        silence_duration_ms: 800
 
   ultravox:
     api_key_env: ULTRAVOX_API_KEY

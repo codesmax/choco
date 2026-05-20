@@ -15,7 +15,7 @@ Session history is summarized and persisted to memory files for continuity acros
 python -m chocopi
 
 # With debug logging
-CHOCO_LOG=DEBUG python -m chocopi
+CHOCO_LOG_LEVEL=DEBUG python -m chocopi
 ```
 
 There is no standalone script at the repo root — `./chocopi` is a bash wrapper and the Python package lives under `src/chocopi/`.

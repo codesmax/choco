@@ -55,8 +55,10 @@ def _openai(config, session_instructions, transcription_instructions):
         async def _truncate_current_audio_response(self):
             self._current_audio_response = None
 
-    td_params = {k: v for k, v in config.get("turn_detection", {}).items() if k != "type"}
-    noise_red = config.get("noise_reduction")
+    vad_type = config["vad"]["server"]["type"]
+    vad_config = config["vad"]["server"].get(vad_type, {})
+    turn_detection = TurnDetection(**vad_config) if vad_type == "server_vad" else SemanticTurnDetection(**vad_config)
+    noise_reduction_type = config.get("noise_reduction")
 
     return OpenAIRealtimeLLMService(
         api_key=os.getenv(config["api_key_env"]),
@@ -70,8 +72,8 @@ def _openai(config, session_instructions, transcription_instructions):
                             model=config.get("transcription_model", "gpt-4o-mini-transcribe"),
                             prompt=transcription_instructions,
                         ),
-                        noise_reduction=InputAudioNoiseReduction(type=noise_red) if noise_red else None,
-                        turn_detection=SemanticTurnDetection(**td_params),
+                        noise_reduction=InputAudioNoiseReduction(type=noise_reduction_type) if noise_reduction_type else None,
+                        turn_detection=turn_detection,
                     ),
                     output=AudioOutput(
                         voice=config.get("voice", "alloy"),
@@ -102,17 +104,15 @@ def _google(config, session_instructions):
     """
     from pipecat.services.google.gemini_live.llm import GeminiLiveLLMService, GeminiVADParams
 
-    if config.get("vad") == "local":
-        vad = GeminiVADParams(disabled=True)
-    elif vad_cfg := config.get("vad_settings"):
+    if vad_config := config.get("vad", {}).get("server"):
         vad = GeminiVADParams(
-            start_sensitivity=vad_cfg.get("start_sensitivity"),
-            end_sensitivity=vad_cfg.get("end_sensitivity"),
-            prefix_padding_ms=vad_cfg.get("prefix_padding_ms"),
-            silence_duration_ms=vad_cfg.get("silence_duration_ms"),
+            start_sensitivity=vad_config.get("start_sensitivity"),
+            end_sensitivity=vad_config.get("end_sensitivity"),
+            prefix_padding_ms=vad_config.get("prefix_padding_ms"),
+            silence_duration_ms=vad_config.get("silence_duration_ms"),
         )
     else:
-        vad = None
+        vad = GeminiVADParams(disabled=True)
 
     return GeminiLiveLLMService(
         api_key=os.getenv(config["api_key_env"]),
