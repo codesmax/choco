@@ -52,7 +52,7 @@ Python 3.11 is required because `tflite-runtime` (subdependency of `openwakeword
 | `src/chocopi/chocopi.py` | Top-level orchestrator and graceful shutdown |
 | `src/chocopi/wakeword.py` | OpenWakeWord model loading and inference loop |
 | `src/chocopi/conversation.py` | Pipecat pipeline setup and `ConversationSession` with event-handler-based turn logic |
-| `src/chocopi/pipecat_utils.py` | Pipecat `FrameProcessor` subclasses (`SentSoundProcessor`, `DisplaySync`), `TranscriptObserver`, and `load_sound_frame` |
+| `src/chocopi/pipecat_utils.py` | Pipecat `FrameProcessor` subclasses (`SentSoundProcessor`, `DisplaySyncProcessor`), `TranscriptObserver`, and `load_sound_frame` |
 | `src/chocopi/providers.py` | Pipecat LLM service factories (OpenAI Realtime, Gemini Live, Ultravox) |
 | `src/chocopi/audio.py` | Shared input/output audio manager (wakeword + conversation) |
 | `src/chocopi/display.py` | Pygame-ce UI (sprites + transcript pane), enabled by `CHOCO_DISPLAY=1` |
@@ -78,7 +78,7 @@ Python 3.11 is required because `tflite-runtime` (subdependency of `openwakeword
 LocalAudioTransport.input()
   → user_aggregator       (LLMContextAggregatorPair)
   → LLM service           (provider-specific)
-  → _DisplaySync          (FrameProcessor, only when display is enabled)
+  → DisplaySyncProcessor  (FrameProcessor, only when display is enabled)
   → LocalAudioTransport.output()
   → assistant_aggregator  (LLMContextAggregatorPair)
 ```
@@ -89,15 +89,15 @@ LocalAudioTransport.input()
 
 ### Event Handlers
 
-- `user_aggregator.on_user_turn_stopped` — transcript arrives → queues sent-sound `OutputAudioRawFrame` → echo/sleep-word detection
-- `assistant_aggregator.on_assistant_turn_stopped` — log transcript, mark greeting end, queue `EndFrame` after termination
-- `_DisplaySync.process_frame` — catches upstream `BotStartedSpeakingFrame` / `BotStoppedSpeakingFrame` → `display.set_speaking(True/False)`
+- `user_aggregator.on_user_turn_stopped` — records transcript, runs echo/sleep-word detection
+- `assistant_aggregator.on_assistant_turn_stopped` — records transcript, marks greeting end, queues `EndFrame` after termination
+- `DisplaySyncProcessor.process_frame` — intercepts `BotStartedSpeakingFrame` / `BotStoppedSpeakingFrame` → `display.set_speaking(True/False)`
 
 ### Greeting Flow
 
 - `LLMContext([{"role": "user", "content": greeting_message}])` seeds the context for all providers.
 - `task.queue_frames([LLMRunFrame()])` triggers the initial response.
-- `on_assistant_turn_stopped` with `is_greeting=True` → sets `is_greeting=False`, starts session timer.
+- `on_assistant_turn_stopped` with `is_greeting=True` → sets `is_greeting=False`.
 
 ### Termination Flow
 
@@ -132,7 +132,7 @@ All session instructions are baked in at startup — no per-response injection. 
 
 ### Display
 
-Optional pygame-ce UI with sprite animations and transcript panel (`CHOCO_DISPLAY=1`). `_DisplaySync` sits between the LLM service and the output transport to intercept upstream speaking frames and drive display state.
+Optional pygame-ce UI with sprite animations and transcript panel (`CHOCO_DISPLAY=1`). `DisplaySyncProcessor` sits between the LLM service and the output transport to intercept upstream speaking frames and drive display state.
 
 ## Cross-Platform Notes
 
@@ -179,7 +179,7 @@ Managed via `pyproject.toml` (no `requirements.txt`). Key packages:
 
 - `pipecat-ai[openai,google,ultravox,local]` — voice pipeline + all providers
 - `openwakeword` — wake word detection
-- `sounddevice` / `soundfile` — audio recording and file I/O
+- `sounddevice` — audio recording
 - `simpleaudio` — audio playback
 - `pygame-ce` — optional visual display
 - `rapidfuzz` — fuzzy sleep-word matching

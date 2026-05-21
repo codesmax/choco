@@ -20,7 +20,6 @@ dependencies = [
     "pipecat-ai[openai,google,ultravox,local]>=1.0.0",
     "simpleaudio>=1.0.4",
     "sounddevice>=0.4.6",
-    "soundfile>=0.13.1",
 ]
 
 [project.scripts]
