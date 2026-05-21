@@ -3,7 +3,7 @@ import time
 import pygame
 from threading import Lock
 from loguru import logger
-from chocopi.config import USE_DISPLAY, IS_PI, IMAGES_PATH, FONTS_PATH
+from chococore.config import USE_DISPLAY, IS_PI, IMAGES_PATH, FONTS_PATH
 
 class DisplayManager:
     """Manages visual display with sprite animations and transcript"""

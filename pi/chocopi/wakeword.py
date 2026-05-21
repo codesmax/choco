@@ -4,7 +4,7 @@ import queue
 import openwakeword
 from openwakeword.model import Model
 from loguru import logger
-from chocopi.config import CONFIG, IS_PI, MODELS_PATH
+from chococore.config import CONFIG, IS_PI, MODELS_PATH
 from chocopi.audio import AUDIO
 
 
