@@ -15,24 +15,23 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMUserAggregatorParams,
     UserTurnStoppedMessage,
 )
-from pipecat.transports.local.audio import LocalAudioTransport, LocalAudioTransportParams
 from rapidfuzz import fuzz
 
-from chocopi.config import CONFIG, PROVIDER
-from chocopi.memory import (
+from chococore.config import CONFIG, PROVIDER
+from chococore.memory import (
     build_memory_block,
     load_memory,
     save_memory,
     summarize_session,
     update_memory,
 )
-from chocopi.pipecat_utils import (
+from chococore.pipecat_utils import (
     DisplaySyncProcessor,
     SentSoundProcessor,
     TranscriptObserver,
     load_sound_frame,
 )
-from chocopi.providers import create_llm_service
+from chococore.providers import create_llm_service
 
 
 class ConversationSession:
@@ -129,15 +128,8 @@ class ConversationSession:
 
     # --- Main loop ---
 
-    async def run(self):
+    async def run(self, transport):
         """Build and run the Pipecat pipeline for this conversation session."""
-        transport = LocalAudioTransport(
-            LocalAudioTransportParams(
-                audio_in_enabled=True,
-                audio_out_enabled=True,
-            )
-        )
-
         vad_params = None
         if self._use_local_vad:
             from pipecat.audio.vad.silero import SileroVADAnalyzer
