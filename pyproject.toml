@@ -9,9 +9,11 @@ license = { text = "MIT" }
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "loguru>=0.7.0",
     "numpy>=1.26.4,<2.0",
     "openwakeword>=0.6.0",
     "pygame-ce>=2.5.0",
+    "python-box>=3.0.0",
     "python-dotenv>=1.0.0",
     "pyyaml>=6.0.1",
     "rapidfuzz>=3.0.0",

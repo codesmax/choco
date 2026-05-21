@@ -1,8 +1,5 @@
 """Pipecat LLM service factories for each supported provider"""
-import logging
-import os
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 def create_llm_service(
@@ -40,6 +37,7 @@ def _openai(config, session_instructions, transcription_instructions):
     reject truncation requests with "Audio content Xms is already shorter than Yms".
     Skipping the truncate event lets the session continue cleanly.
     """
+    import os
     from pipecat.services.openai.realtime.events import (
         AudioConfiguration,
         AudioInput,
@@ -48,6 +46,7 @@ def _openai(config, session_instructions, transcription_instructions):
         InputAudioTranscription,
         SemanticTurnDetection,
         SessionProperties,
+        TurnDetection,
     )
     from pipecat.services.openai.realtime.llm import OpenAIRealtimeLLMService as _Base
 
@@ -55,29 +54,29 @@ def _openai(config, session_instructions, transcription_instructions):
         async def _truncate_current_audio_response(self):
             self._current_audio_response = None
 
-    vad_type = config["vad"]["server"]["type"]
-    vad_config = config["vad"]["server"].get(vad_type, {})
+    vad_type = config.vad.server.type
+    vad_config = config.vad.server[vad_type] or {}
     turn_detection = TurnDetection(**vad_config) if vad_type == "server_vad" else SemanticTurnDetection(**vad_config)
-    noise_reduction_type = config.get("noise_reduction")
+    noise_reduction_type = config.noise_reduction
 
     return OpenAIRealtimeLLMService(
-        api_key=os.getenv(config["api_key_env"]),
+        api_key=os.getenv(config.api_key_env),
         settings=OpenAIRealtimeLLMService.Settings(
-            model=config["model"],
+            model=config.model,
             system_instruction=session_instructions,
             session_properties=SessionProperties(
                 audio=AudioConfiguration(
                     input=AudioInput(
                         transcription=InputAudioTranscription(
-                            model=config.get("transcription_model", "gpt-4o-mini-transcribe"),
+                            model=config.transcription_model or "gpt-4o-mini-transcribe",
                             prompt=transcription_instructions,
                         ),
                         noise_reduction=InputAudioNoiseReduction(type=noise_reduction_type) if noise_reduction_type else None,
                         turn_detection=turn_detection,
                     ),
                     output=AudioOutput(
-                        voice=config.get("voice", "alloy"),
-                        speed=config.get("output_speed", 1.0),
+                        voice=config.voice or "alloy",
+                        speed=config.output_speed or 1.0,
                     ),
                 ),
             ),
@@ -102,23 +101,24 @@ def _google(config, session_instructions):
       silence_duration_ms: int
       prefix_padding_ms: int
     """
+    import os
     from pipecat.services.google.gemini_live.llm import GeminiLiveLLMService, GeminiVADParams
 
-    if vad_config := config.get("vad", {}).get("server"):
+    if vad_config := config.vad and config.vad.server:
         vad = GeminiVADParams(
-            start_sensitivity=vad_config.get("start_sensitivity"),
-            end_sensitivity=vad_config.get("end_sensitivity"),
-            prefix_padding_ms=vad_config.get("prefix_padding_ms"),
-            silence_duration_ms=vad_config.get("silence_duration_ms"),
+            start_sensitivity=vad_config.start_sensitivity,
+            end_sensitivity=vad_config.end_sensitivity,
+            prefix_padding_ms=vad_config.prefix_padding_ms,
+            silence_duration_ms=vad_config.silence_duration_ms,
         )
     else:
         vad = GeminiVADParams(disabled=True)
 
     return GeminiLiveLLMService(
-        api_key=os.getenv(config["api_key_env"]),
+        api_key=os.getenv(config.api_key_env),
         settings=GeminiLiveLLMService.Settings(
-            model=config.get("model", "gemini-3.1-flash-live-preview"),
-            voice=config.get("voice", "Zephyr"),
+            model=config.model or "gemini-3.1-flash-live-preview",
+            voice=config.voice or "Zephyr",
             system_instruction=session_instructions,
             vad=vad,
         ),
@@ -134,6 +134,7 @@ def _ultravox(config, session_instructions):
     evaluates `if self._selected_tools`, raising AttributeError before any API call.
     Minimal subclass retained until fixed upstream.
     """
+    import os
     from pipecat.services.ultravox.llm import OneShotInputParams, UltravoxRealtimeLLMService as _Base
 
     class UltravoxRealtimeLLMService(_Base):
@@ -144,9 +145,9 @@ def _ultravox(config, session_instructions):
 
     return UltravoxRealtimeLLMService(
         params=OneShotInputParams(
-            api_key=os.getenv(config["api_key_env"]),
+            api_key=os.getenv(config.api_key_env),
             system_prompt=session_instructions,
-            voice=config.get("voice", "ee93bbf5-b47d-4f0d-bc03-f7235ddd8ab1"),
-            model=config.get("model", "ultravox-v0.7"),
+            voice=config.voice or "ee93bbf5-b47d-4f0d-bc03-f7235ddd8ab1",
+            model=config.model or "ultravox-v0.7",
         )
     )

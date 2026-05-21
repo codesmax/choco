@@ -1,22 +1,20 @@
 import asyncio
 import os
 import time
-import logging
 import pygame
 from threading import Lock
+from loguru import logger
 from chocopi.config import USE_DISPLAY, IS_PI, IMAGES_PATH, FONTS_PATH
-
-logger = logging.getLogger(__name__)
 
 class DisplayManager:
     """Manages visual display with sprite animations and transcript"""
 
     def __init__(self, config):
-        self.config = config['display']
+        self.config = config.display
 
         # Computed dimensions based on config
-        self.screen_width = self.config['width']
-        self.screen_height = self.config['height']
+        self.screen_width = self.config.width
+        self.screen_height = self.config.height
         self.pane_width = self.screen_width // 2  # Split screen in half
         self.graphics_width = self.pane_width
         self.transcript_width = self.pane_width
@@ -55,7 +53,7 @@ class DisplayManager:
             pygame.font.init()
 
             if driver := pygame.display.get_driver():
-                logger.info("🖥️  Display driver loaded: %s", driver)
+                logger.info("🖥️  Display driver loaded: {}", driver)
             else:
                 logger.error("⚠️  No display driver available, disabling visual output")
                 return False
@@ -78,30 +76,30 @@ class DisplayManager:
             self.font = self._load_font()
             self._create_gradient()
 
-            logger.info("🖥️  Display initialized @ %sx%s resolution", self.config['width'], self.config['height'])
+            logger.info("🖥️  Display initialized @ {}x{} resolution", self.config.width, self.config.height)
             return True
 
         except Exception as e:
-            logger.error("❌ Failed to initialize display: %s", e)
+            logger.error("❌ Failed to initialize display: {}", e)
             return False
 
     def _load_font(self):
         """Load font with multilingual support"""
-        font_size = self.config['font_size']
-        bundled_font = os.path.join(FONTS_PATH, self.config['font'])
+        font_size = self.config.font_size
+        bundled_font = os.path.join(FONTS_PATH, self.config.font)
         if os.path.exists(bundled_font):
-            logger.info("📝 Using bundled font: %s", bundled_font)
+            logger.info("📝 Using bundled font: {}", bundled_font)
             return pygame.font.Font(bundled_font, font_size)
 
         # Fallback to system fonts with multilingual support
         system_fonts = ['notosanscjk', 'notosans', 'arial', 'helvetica', 'freesans']
-        logger.info("📝 Using system font fallback: %s", system_fonts)
+        logger.info("📝 Using system font fallback: {}", system_fonts)
         return pygame.font.SysFont(system_fonts, font_size)
 
     def _load_sprites(self):
         """Load idle and speaking sprites"""
         # Idle
-        idle_path = os.path.join(IMAGES_PATH, self.config['sprites']['idle'])
+        idle_path = os.path.join(IMAGES_PATH, self.config.sprites.idle)
         idle_sprite = pygame.image.load(idle_path)
         if idle_sprite.get_size() == (self.pane_width, self.screen_height):
             self.idle_sprite = idle_sprite
@@ -109,7 +107,7 @@ class DisplayManager:
             self.idle_sprite = pygame.transform.smoothscale(idle_sprite, (self.pane_width, self.screen_height))
 
         # Speaking sprite sheet (horizontal layout: 4 frames)
-        speaking_path = os.path.join(IMAGES_PATH, self.config['sprites']['speaking'])
+        speaking_path = os.path.join(IMAGES_PATH, self.config.sprites.speaking)
         spritesheet = pygame.image.load(speaking_path)
 
         # Split into 4 frames scaled to pane size
@@ -122,7 +120,7 @@ class DisplayManager:
             self.speaking_frames.append(scaled_frame)
 
         # Sleeping sprite sheet (horizontal layout: 4 frames)
-        sleeping_path = os.path.join(IMAGES_PATH, self.config['sprites']['sleeping'])
+        sleeping_path = os.path.join(IMAGES_PATH, self.config.sprites.sleeping)
         sleeping_sheet = pygame.image.load(sleeping_path)
 
         # Split into 4 frames scaled to full screen
@@ -137,8 +135,8 @@ class DisplayManager:
     def _create_gradient(self):
         """Create gradient surface for smooth transition between panes"""
         self.gradient = pygame.Surface((self.gradient_width, self.screen_height), pygame.SRCALPHA)
-        graphics_bg = pygame.Color(self.config['colors']['graphics_bg'])
-        transcript_bg = pygame.Color(self.config['colors']['transcript_bg'])
+        graphics_bg = pygame.Color(self.config.colors.graphics_bg)
+        transcript_bg = pygame.Color(self.config.colors.transcript_bg)
 
         # Create vertical gradient from graphics_bg to transcript_bg
         for x in range(self.gradient_width):
@@ -165,8 +163,8 @@ class DisplayManager:
             return
 
         # Active state
-        graphics_bg = pygame.Color(self.config['colors']['graphics_bg'])
-        transcript_bg = pygame.Color(self.config['colors']['transcript_bg'])
+        graphics_bg = pygame.Color(self.config.colors.graphics_bg)
+        transcript_bg = pygame.Color(self.config.colors.transcript_bg)
 
         # Clear graphics pane (left)
         self.screen.fill(graphics_bg, (0, 0, self.pane_width, self.screen_height))
@@ -196,13 +194,13 @@ class DisplayManager:
                 return
             transcripts_copy = list(self.transcripts)
 
-        active_color = pygame.Color(self.config['colors']['active_text'])
-        choco_color = pygame.Color(self.config['colors']['choco_text'])
-        user_color = pygame.Color(self.config['colors']['user_text'])
+        active_color = pygame.Color(self.config.colors.active_text)
+        choco_color = pygame.Color(self.config.colors.choco_text)
+        user_color = pygame.Color(self.config.colors.user_text)
 
         # Newest messages at bottom
         y = self.screen_height - self.transcript_margin
-        line_height = self.config['font_size'] + self.config['line_spacing']
+        line_height = self.config.font_size + self.config.line_spacing
         for idx, (speaker, wrapped_lines) in enumerate(reversed(transcripts_copy)):
             # Most recent transcript uses active color
             if idx == 0:
@@ -270,9 +268,9 @@ class DisplayManager:
 
         # Use different FPS for sleeping vs speaking
         if not self.is_active:
-            frame_duration = 1.0 / self.config['frame_rates']['sleeping']
+            frame_duration = 1.0 / self.config.frame_rates.sleeping
         else:
-            frame_duration = 1.0 / self.config['frame_rates']['speaking']
+            frame_duration = 1.0 / self.config.frame_rates.speaking
 
         if current_time - self.last_frame_time >= frame_duration:
             with self.lock:
@@ -310,14 +308,14 @@ class DisplayManager:
 
                 # Variable FPS: refresh rate when awake, sleeping animation rate when sleeping
                 with self.lock:
-                    fps = self.config['frame_rates']['refresh'] if self.is_active else self.config['frame_rates']['sleeping']
+                    fps = self.config.frame_rates.refresh if self.is_active else self.config.frame_rates.sleeping
                 await asyncio.sleep(1.0 / fps)
 
                 frame_count += 1
                 if frame_count == 1:
                     logger.debug("✅ First frame rendered")
                 elif frame_count % (fps * 10) == 0:  # Every 10 seconds
-                    logger.debug("🎬 Display running... %s frames rendered", frame_count)
+                    logger.debug("🎬 Display running... {} frames rendered", frame_count)
         finally:
             logger.debug("🛑 Display loop ending")
             pygame.quit()
@@ -370,5 +368,5 @@ def create_display_manager(config):
     try:
         return DisplayManager(config)
     except Exception as e:
-        logger.error("⚠️  Failed to initialize display manager: %s", e)
+        logger.error("⚠️  Failed to initialize display manager: {}", e)
         return None

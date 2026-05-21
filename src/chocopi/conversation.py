@@ -1,20 +1,10 @@
 """Conversation session powered by Pipecat"""
 import asyncio
-import logging
 import re
 import time
 
-import wave
-
-from pipecat.frames.frames import (
-    BotStartedSpeakingFrame,
-    BotStoppedSpeakingFrame,
-    EndFrame,
-    LLMContextFrame,
-    LLMRunFrame,
-    OutputAudioRawFrame,
-)
-from pipecat.observers.loggers.transcription_log_observer import TranscriptionLogObserver
+from loguru import logger
+from pipecat.frames.frames import EndFrame, LLMRunFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -26,11 +16,10 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMUserAggregatorParams,
     UserTurnStoppedMessage,
 )
-from pipecat.processors.frame_processor import FrameProcessor
 from pipecat.transports.local.audio import LocalAudioTransport, LocalAudioTransportParams
 from rapidfuzz import fuzz
 
-from chocopi.config import CONFIG, PROVIDER, SOUNDS_PATH
+from chocopi.config import CONFIG, PROVIDER
 from chocopi.memory import (
     build_memory_block,
     load_memory,
@@ -38,61 +27,13 @@ from chocopi.memory import (
     summarize_session,
     update_memory,
 )
+from chocopi.pipecat_utils import (
+    DisplaySyncProcessor,
+    SentSoundProcessor,
+    TranscriptObserver,
+    load_sound_frame,
+)
 from chocopi.providers import create_llm_service
-
-logger = logging.getLogger(__name__)
-
-
-def _load_sound_frame(filename: str) -> OutputAudioRawFrame | None:
-    """Load a WAV file as an OutputAudioRawFrame. File must be 24kHz mono PCM."""
-    path = SOUNDS_PATH / filename
-    try:
-        with wave.open(str(path)) as wf:
-            return OutputAudioRawFrame(
-                audio=wf.readframes(-1),
-                sample_rate=wf.getframerate(),
-                num_channels=wf.getnchannels(),
-            )
-    except Exception as exc:
-        logger.warning("Could not preload sound %s: %s", filename, exc)
-        return None
-
-
-class _SentSoundProcessor(FrameProcessor):
-    """Injects the sent-sound frame before LLMContextFrame reaches the LLM.
-
-    Intercepts LLMContextFrame (emitted by user_aggregator when a user turn
-    ends) and pushes the sound first, guaranteeing it plays before the first
-    LLM audio frame. Skipped during the greeting turn (is_greeting=True) since
-    LLMRunFrame also triggers LLMContextFrame.
-    """
-
-    def __init__(self, session, frame: OutputAudioRawFrame | None):
-        super().__init__()
-        self._session = session
-        self._frame = frame
-
-    async def process_frame(self, frame, direction):
-        await super().process_frame(frame, direction)
-        if isinstance(frame, LLMContextFrame) and not self._session.is_greeting and self._frame:
-            await self.push_frame(self._frame)
-        await self.push_frame(frame, direction)
-
-
-class _DisplaySync(FrameProcessor):
-    """Syncs display speaking animation to bot audio start/stop."""
-
-    def __init__(self, display):
-        super().__init__()
-        self._display = display
-
-    async def process_frame(self, frame, direction):
-        await super().process_frame(frame, direction)
-        if isinstance(frame, BotStartedSpeakingFrame):
-            self._display.set_speaking(True)
-        elif isinstance(frame, BotStoppedSpeakingFrame):
-            self._display.set_speaking(False)
-        await self.push_frame(frame, direction)
 
 
 class ConversationSession:
@@ -102,12 +43,12 @@ class ConversationSession:
         if profile is None:
             raise ValueError("ConversationSession requires a profile configuration")
 
-        provider_config = CONFIG["providers"][PROVIDER]
-        self.session_config = CONFIG["session"]
+        provider_config = CONFIG.providers[PROVIDER]
+        self.session_config = CONFIG.session
         self.profile = profile
         self.profile_name = profile.get("name", "default").lower()
         self.memory = load_memory(self.profile_name)
-        self.lang_config = CONFIG["languages"][learning_language]
+        self.lang_config = CONFIG.languages[learning_language]
         self.comprehension_age = profile["learning_languages"][learning_language]["comprehension_age"]
         self.display = display
 
@@ -118,15 +59,15 @@ class ConversationSession:
         self.transcript_log = []
         self.session_start_time = None
         self._consecutive_echo_turns = 0
-        self._use_local_vad = provider_config.get("vad", {}).get("local", False)
+        self._use_local_vad = bool(provider_config.vad and provider_config.vad.local)
 
-        native_language = CONFIG["languages"][profile["native_language"]]["language_name"]
+        native_language = CONFIG.languages[profile["native_language"]].language_name
         params = {
             "user_age": profile["user_age"],
             "native_language": native_language,
-            "learning_language": self.lang_config["language_name"],
+            "learning_language": self.lang_config.language_name,
             "comprehension_age": self.comprehension_age,
-            "sleep_word": self.lang_config["sleep_word"],
+            "sleep_word": self.lang_config.sleep_word,
         }
 
         translations = profile["learning_languages"][learning_language].get("translations", True)
@@ -136,15 +77,15 @@ class ConversationSession:
         )
 
         memory_block = build_memory_block(self.memory)
-        self._session_instructions = CONFIG["prompts"]["session"].format(
+        self._session_instructions = CONFIG.prompts.session.format(
             **params,
             memory_block=memory_block,
             translation_instruction=translation_instruction,
         )
-        self._greeting_message = CONFIG["prompts"]["greeting"].format(**params)
-        logger.debug("⚙️  Session instructions: %s", self._session_instructions)
+        self._greeting_message = CONFIG.prompts.greeting.format(**params)
+        logger.debug("⚙️  Session instructions: {}", self._session_instructions)
 
-        transcription_instructions = CONFIG["prompts"]["transcription"].format(**params)
+        transcription_instructions = CONFIG.prompts.transcription.format(**params)
 
         self._llm_service = create_llm_service(
             PROVIDER,
@@ -153,14 +94,14 @@ class ConversationSession:
             transcription_instructions,
         )
 
-        self._sent_frame = _load_sound_frame(CONFIG["sounds"]["sent"])
+        self._sent_frame = load_sound_frame(CONFIG.sounds.sent)
 
     # --- Transcript helpers ---
 
     def _is_echo(self, transcript: str) -> bool:
-        echo_config = self.session_config.get("echo_detection", {})
-        max_words = echo_config.get("max_words", 4)
-        threshold = echo_config.get("overlap_threshold", 80)
+        echo_config = self.session_config.echo_detection
+        max_words = echo_config.max_words or 4
+        threshold = echo_config.overlap_threshold or 80
         if not transcript or not self.last_assistant_transcript:
             return False
         if len(transcript.split()) > max_words:
@@ -168,13 +109,13 @@ class ConversationSession:
         return fuzz.partial_ratio(transcript.lower(), self.last_assistant_transcript.lower()) >= threshold
 
     def _is_sleep_word(self, text: str, threshold: int = 80) -> bool:
-        sleep_word = self.lang_config["sleep_word"].lower()
+        sleep_word = self.lang_config.sleep_word.lower()
         if not text or not sleep_word:
             return False
         filtered = re.sub(r"[,.!?]", "", text.strip().lower())
         score = fuzz.partial_ratio(sleep_word, filtered)
         if score >= threshold:
-            logger.debug("✅ Sleep word matched: '%s' (score: %d)", sleep_word, score)
+            logger.debug("✅ Sleep word matched: '{}' (score: {})", sleep_word, score)
             return True
         return False
 
@@ -215,9 +156,9 @@ class ConversationSession:
             ),
         )
 
-        pipeline_stages = [transport.input(), user_aggregator, _SentSoundProcessor(self, self._sent_frame), self._llm_service]
+        pipeline_stages = [transport.input(), user_aggregator, SentSoundProcessor(lambda: self.is_greeting, self._sent_frame), self._llm_service]
         if self.display:
-            pipeline_stages.append(_DisplaySync(self.display))
+            pipeline_stages.append(DisplaySyncProcessor(self.display))
         pipeline_stages.extend([transport.output(), assistant_aggregator])
 
         pipeline = Pipeline(pipeline_stages)
@@ -227,8 +168,8 @@ class ConversationSession:
                 enable_metrics=True,
                 enable_usage_metrics=True,
             ),
-            idle_timeout_secs=self.session_config["conversation_timeout"],
-            observers=[TranscriptionLogObserver()],
+            idle_timeout_secs=self.session_config.conversation_timeout,
+            observers=[TranscriptObserver()],
         )
 
         @user_aggregator.event_handler("on_user_turn_stopped")
@@ -236,37 +177,37 @@ class ConversationSession:
             if not message.content:
                 return
 
-            self._record_transcript("user", message.content, "🗣️  You said: %s", "user")
+            self._record_transcript("user", message.content, "🗣️  You said: {}", "user")
 
             if self.is_greeting:
                 return
 
-            echo_config = self.session_config.get("echo_detection", {})
+            echo_config = self.session_config.echo_detection
             if self._is_echo(message.content):
                 self._consecutive_echo_turns += 1
                 logger.debug(
-                    "🔁 Echo candidate (%d/%d): '%s'",
-                    self._consecutive_echo_turns, echo_config.get("consecutive_limit", 5), message.content,
+                    "🔁 Echo candidate ({}/{}): '{}'",
+                    self._consecutive_echo_turns, echo_config.consecutive_limit or 5, message.content,
                 )
-                if self._consecutive_echo_turns >= echo_config.get("consecutive_limit", 5):
-                    logger.warning("🔁 Echo loop detected after %d turns", self._consecutive_echo_turns)
+                if self._consecutive_echo_turns >= (echo_config.consecutive_limit or 5):
+                    logger.warning("🔁 Echo loop detected after {} turns", self._consecutive_echo_turns)
                     self.is_terminating = True
             else:
                 self._consecutive_echo_turns = 0
 
             if not self.is_terminating and self._is_sleep_word(
-                message.content, self.session_config["sleep_word_threshold"]
+                message.content, self.session_config.sleep_word_threshold
             ):
-                logger.info("💤 Sleep word detected: '%s'", message.content)
+                logger.info("💤 Sleep word detected: '{}'", message.content)
                 self.is_terminating = True
 
         @assistant_aggregator.event_handler("on_assistant_turn_stopped")
         async def on_assistant_turn_stopped(aggregator, message: AssistantTurnStoppedMessage):
             if not message.content:
-                logger.debug("⚠️  Empty assistant turn (interrupted=%s)", message.interrupted)
+                logger.debug("⚠️  Empty assistant turn (interrupted={})", message.interrupted)
                 return
 
-            self._record_transcript("assistant", message.content, "🤖 Choco says: %s", "choco")
+            self._record_transcript("assistant", message.content, "🤖 Choco says: {}", "choco")
 
             if self.is_greeting:
                 self.is_greeting = False
@@ -283,7 +224,7 @@ class ConversationSession:
             runner = PipelineRunner(handle_sigint=False)
             await runner.run(task)
         except Exception as e:
-            logger.error("⚠️  Error during conversation: %s", e)
+            logger.error("⚠️  Error during conversation: {}", e)
 
     # --- Memory ---
 
@@ -301,7 +242,7 @@ class ConversationSession:
                     memory,
                 )
             except Exception as exc:
-                logger.warning("Memory summarization error: %s", exc)
+                logger.warning("Memory summarization error: {}", exc)
                 update_memory(memory, self.last_user_transcript, self.last_assistant_transcript)
         else:
             update_memory(memory, self.last_user_transcript, self.last_assistant_transcript)
@@ -310,6 +251,6 @@ class ConversationSession:
             await asyncio.to_thread(save_memory, self.profile_name, memory)
             logger.info("💾 Memory saved successfully.")
         except Exception as exc:
-            logger.warning("Memory save error: %s", exc)
+            logger.warning("Memory save error: {}", exc)
             return
         self.memory = memory

@@ -1,16 +1,14 @@
 """Audio management for playback and recording"""
 import os
-import logging
 import numpy as np
 import simpleaudio as sa
 import sounddevice as sd
 import soundfile as sf
-from chocopi.config import CONFIG, SOUNDS_PATH
+from loguru import logger
+from chocopi.config import SOUNDS_PATH
 
 INT16_MIN = np.iinfo(np.int16).min
 INT16_MAX = np.iinfo(np.int16).max
-
-logger = logging.getLogger(__name__)
 
 
 class AudioManager:
@@ -37,7 +35,7 @@ class AudioManager:
                 if dtype == 'int16':
                     max_val = np.max(np.abs(processed))
                     if max_val > INT16_MAX:
-                        logger.debug("🔇 Input clipping detected (max: %.0f)", max_val)
+                        logger.debug("🔇 Input clipping detected (max: {:.0f})", max_val)
                     processed = np.clip(processed, INT16_MIN, INT16_MAX).astype(np.int16)
 
                 callback(processed, frames, time, status)
@@ -79,7 +77,7 @@ class AudioManager:
                     sample_rate=int(sample_rate)
                 )
         except Exception as e:
-            logger.error("❌ Audio playback error: %s", e)
+            logger.error("❌ Audio playback error: {}", e)
 
     def stop_playing(self):
         """Stops playback if active"""
@@ -88,7 +86,7 @@ class AudioManager:
                 self.play_obj.stop()
             self.play_obj = None
         except Exception as e:
-            logger.warning("⚠️  Error stopping playback: %s", e)
+            logger.warning("⚠️  Error stopping playback: {}", e)
 
 
 # Global audio manager instance

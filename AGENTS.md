@@ -52,6 +52,7 @@ Python 3.11 is required because `tflite-runtime` (subdependency of `openwakeword
 | `src/chocopi/chocopi.py` | Top-level orchestrator and graceful shutdown |
 | `src/chocopi/wakeword.py` | OpenWakeWord model loading and inference loop |
 | `src/chocopi/conversation.py` | Pipecat pipeline setup and `ConversationSession` with event-handler-based turn logic |
+| `src/chocopi/pipecat_utils.py` | Pipecat `FrameProcessor` subclasses (`SentSoundProcessor`, `DisplaySync`), `TranscriptObserver`, and `load_sound_frame` |
 | `src/chocopi/providers.py` | Pipecat LLM service factories (OpenAI Realtime, Gemini Live, Ultravox) |
 | `src/chocopi/audio.py` | Shared input/output audio manager (wakeword + conversation) |
 | `src/chocopi/display.py` | Pygame-ce UI (sprites + transcript pane), enabled by `CHOCO_DISPLAY=1` |

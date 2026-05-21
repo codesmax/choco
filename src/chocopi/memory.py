@@ -1,14 +1,12 @@
 """Session memory storage and formatting"""
 import copy
 import json
-import logging
 import os
 import urllib.request
 from pathlib import Path
 import yaml
+from loguru import logger
 from chocopi.config import PROJECT_ROOT, CONFIG
-
-logger = logging.getLogger(__name__)
 
 MEMORY_TYPES = ("joke", "vocab", "story", "fact", "topic")
 MAX_ITEMS_PER_TYPE = {
@@ -221,15 +219,15 @@ def _format_transcript_tail(transcript_log, max_chars):
 
 
 def _build_summary_payload(profile, transcript_text, memory):
-    native_language = CONFIG["languages"][profile["native_language"]]["language_name"]
-    instructions = CONFIG["prompts"]["summary"].format(
+    native_language = CONFIG.languages[profile["native_language"]].language_name
+    instructions = CONFIG.prompts.summary.format(
         native_language=native_language
     )
     summary = memory.get("summary", "").strip()
     if summary:
         transcript_text = f"Existing summary: {summary}\n\n{transcript_text}"
 
-    payload = copy.deepcopy(CONFIG["summary_model"])
+    payload = copy.deepcopy(CONFIG.summary_model)
     payload["instructions"] = instructions
     payload["input"] = [
         {
@@ -245,7 +243,7 @@ def summarize_session(profile_name, profile, transcript_log, memory):
         return memory
 
     transcript_text = _format_transcript(transcript_log)
-    max_chars = CONFIG["summary"]["max_chars"]
+    max_chars = CONFIG.summary.max_chars
     if len(transcript_text) > max_chars:
         transcript_text = _format_transcript_tail(transcript_log, max_chars)
 
@@ -273,10 +271,10 @@ def summarize_session(profile_name, profile, transcript_log, memory):
             error_body = exc.read().decode("utf-8")
         except Exception:
             error_body = ""
-        logger.warning("Memory summarization failed: %s %s", exc, error_body)
+        logger.warning("Memory summarization failed: {} {}", exc, error_body)
         return memory
     except Exception as exc:
-        logger.warning("Memory summarization failed: %s", exc)
+        logger.warning("Memory summarization failed: {}", exc)
         return memory
 
     output_text = _extract_output_text(response_data)
@@ -287,7 +285,7 @@ def summarize_session(profile_name, profile, transcript_log, memory):
     try:
         summary_data = json.loads(output_text)
     except json.JSONDecodeError as exc:
-        logger.warning("Failed to parse memory summary JSON: %s", exc)
+        logger.warning("Failed to parse memory summary JSON: {}", exc)
         return memory
 
     return merge_summary(memory, summary_data or {})

@@ -1,41 +1,41 @@
 """Main orchestrator for ChocoPi voice assistant"""
 import asyncio
 import signal
-import logging
-from chocopi.config import CONFIG, PROFILE
+
+from loguru import logger
+
 from chocopi.audio import AUDIO
-from chocopi.wakeword import WakeWordDetector
+from chocopi.config import CONFIG, PROFILE
 from chocopi.conversation import ConversationSession
 from chocopi.display import create_display_manager
-
-logger = logging.getLogger(__name__)
+from chocopi.wakeword import WakeWordDetector
 
 _SHUTDOWN_SIGNALS = (signal.SIGINT, signal.SIGTERM)
 
 
 class ChocoPi:
     def __init__(self):
-        self.profile = CONFIG["profiles"][PROFILE]
+        self.profile = CONFIG.profiles[PROFILE]
         self.wake_word_detector = WakeWordDetector()
         profile_langs = set(self.profile["learning_languages"].keys())
         profile_langs.add(self.profile["native_language"])
         self.wake_words = [
-            CONFIG["languages"][lang]["wake_word"].lower()
+            CONFIG.languages[lang].wake_word.lower()
             for lang in profile_langs
-            if lang in CONFIG["languages"]
+            if lang in CONFIG.languages
         ]
         self.display = create_display_manager(CONFIG)
 
     def _wake_word_language(self, wake_word):
         """Get language configuration based on detected wake word"""
-        for lang, config in CONFIG['languages'].items():
+        for lang, lang_config in CONFIG.languages.items():
             # Native language has no learning session; its wake word falls through to the default below
-            if wake_word == config['model'] and lang != self.profile["native_language"]:
-                logger.info("⚙️  Session configured for: %s", config['language_name'])
+            if wake_word == lang_config.model and lang != self.profile["native_language"]:
+                logger.info("⚙️  Session configured for: {}", lang_config.language_name)
                 return lang
 
         default_lang = next(iter(self.profile["learning_languages"].keys()))
-        logger.error("⚠️  Unknown wake word: '%s'. Using default language: %s", wake_word, default_lang)
+        logger.error("⚠️  Unknown wake word: '{}'. Using default language: {}", wake_word, default_lang)
 
         return default_lang
 
@@ -47,7 +47,7 @@ class ChocoPi:
 
         def _request_shutdown(signum):
             nonlocal shutting_down
-            logger.info("\n🛑 Received signal %s, shutting down gracefully...", signum)
+            logger.info("\n🛑 Received signal {}, shutting down gracefully...", signum)
             shutting_down = True
             main_task.cancel()
 
@@ -58,7 +58,7 @@ class ChocoPi:
                 # Windows: fall back to signal.signal (best-effort)
                 signal.signal(sig, lambda s, f, signum=sig: _request_shutdown(signum))
 
-        logger.info("✨ Choco is ready! Say one of '%s' to start or end a conversation.", ', '.join(self.wake_words))
+        logger.info("✨ Choco is ready! Say one of '{}' to start or end a conversation.", ', '.join(self.wake_words))
 
         # Start display task if enabled
         display_task = None
@@ -75,7 +75,7 @@ class ChocoPi:
                 if self.display:
                     self.display.set_active(True)
 
-                AUDIO.start_playing(CONFIG['sounds']['awake'])
+                AUDIO.start_playing(CONFIG.sounds.awake)
 
                 # Run conversation session
                 session = ConversationSession(lang, self.profile, display=self.display)
@@ -88,7 +88,7 @@ class ChocoPi:
                     logger.info("\n👋 Shutting down...")
                     break
 
-                AUDIO.start_playing(CONFIG['sounds']['bye'])
+                AUDIO.start_playing(CONFIG.sounds.bye)
                 logger.info("✅ Session ended.\n")
 
                 # Put display to sleep
@@ -100,7 +100,7 @@ class ChocoPi:
         except (asyncio.CancelledError, KeyboardInterrupt, SystemExit):
             logger.info("\n👋 Shutting down...")
         except Exception as e:
-            logger.error("\n❌ Unexpected error: %s", e)
+            logger.error("\n❌ Unexpected error: {}", e)
         finally:
             logger.info("🧹 Cleaning up...")
 
