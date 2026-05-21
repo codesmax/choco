@@ -104,7 +104,7 @@ if [[ "$PLATFORM" == "darwin" ]]; then
 else
     info "Installing system dependencies..."
     sudo apt update
-    sudo apt install -y git pipx libportaudio2 libasound2-dev libegl1 libegl-dev pipewire pipewire-audio pulseaudio-utils
+    sudo apt install -y git pipx libportaudio2 portaudio19-dev libasound2-dev libegl1 libegl-dev pipewire pipewire-audio pulseaudio-utils
     success "System dependencies installed"
 
     if ! id "${CHOCOPI_USER}" &>/dev/null; then
