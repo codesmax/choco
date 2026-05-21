@@ -27,8 +27,8 @@ def _has_display():
 
 # Project root (../..)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-MODELS_PATH = PROJECT_ROOT / 'models'
 ASSETS_PATH = PROJECT_ROOT / 'assets'
+MODELS_PATH = ASSETS_PATH / 'models'
 SOUNDS_PATH = ASSETS_PATH / 'sounds'
 IMAGES_PATH = ASSETS_PATH / 'images'
 FONTS_PATH = ASSETS_PATH / 'fonts'
