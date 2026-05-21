@@ -3,10 +3,11 @@ import asyncio
 import signal
 
 from loguru import logger
+from pipecat.transports.local.audio import LocalAudioTransport, LocalAudioTransportParams
 
+from chococore.config import CONFIG, PROFILE
+from chococore.conversation import ConversationSession
 from chocopi.audio import AUDIO
-from chocopi.config import CONFIG, PROFILE
-from chocopi.conversation import ConversationSession
 from chocopi.display import create_display_manager
 from chocopi.wakeword import WakeWordDetector
 
@@ -78,8 +79,14 @@ class ChocoPi:
                 AUDIO.start_playing(CONFIG.sounds.awake)
 
                 # Run conversation session
+                transport = LocalAudioTransport(
+                    LocalAudioTransportParams(
+                        audio_in_enabled=True,
+                        audio_out_enabled=True,
+                    )
+                )
                 session = ConversationSession(lang, self.profile, display=self.display)
-                await session.run()
+                await session.run(transport)
 
                 # If a shutdown was requested while the session was running, pipecat
                 # may have caught and suppressed the CancelledError internally. Check

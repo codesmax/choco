@@ -27,8 +27,8 @@ def _has_display():
 
 # Project root (../..)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-MODELS_PATH = PROJECT_ROOT / 'models'
 ASSETS_PATH = PROJECT_ROOT / 'assets'
+MODELS_PATH = ASSETS_PATH / 'models'
 SOUNDS_PATH = ASSETS_PATH / 'sounds'
 IMAGES_PATH = ASSETS_PATH / 'images'
 FONTS_PATH = ASSETS_PATH / 'fonts'
@@ -68,7 +68,7 @@ _warning_no = logger.level("WARNING").no
 
 def _log_filter(record):
     name = record["name"]
-    if name.startswith("chocopi"):
+    if name.startswith("chococore") or name.startswith("chocopi"):
         return record["level"].no >= _choco_level_no
     if name.startswith("pipecat"):
         return record["level"].no >= _pipecat_level_no

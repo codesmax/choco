@@ -1,12 +1,8 @@
-# python environment
+.DS_Store
+**/.DS_Store
+.share/
+.env
+data/
 __pycache__/
 *.egg-info/
 .venv/
-
-# local data
-data/
-
-# user settings
-.vscode/
-.env
-ruff.toml

@@ -48,7 +48,8 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
     fi
 fi
 
-SCRIPTPATH=$(dirname $0)
-source $SCRIPTPATH/.venv/bin/activate
-cd $SCRIPTPATH
+SCRIPTPATH=$(dirname $(realpath $0))
+REPO_ROOT=$(realpath "$SCRIPTPATH/../..")
+source "$REPO_ROOT/.venv/bin/activate"
+cd "$REPO_ROOT"
 python -m chocopi

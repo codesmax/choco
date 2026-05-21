@@ -27,7 +27,7 @@ esac
 # Configuration
 # ============================================================================
 PYTHON_VERSION="${PYTHON_VERSION:-3.11}"
-GITHUB_REPO="${GITHUB_REPO:-https://github.com/codesmax/chocopi.git}"
+GITHUB_REPO="${GITHUB_REPO:-https://github.com/codesmax/choco.git}"
 
 if [[ "$PLATFORM" == "darwin" ]]; then
     INSTALL_DIR="${CHOCOPI_DIR:-$HOME/chocopi}"
@@ -104,7 +104,7 @@ if [[ "$PLATFORM" == "darwin" ]]; then
 else
     info "Installing system dependencies..."
     sudo apt update
-    sudo apt install -y git pipx libportaudio2 libasound2-dev libegl1 libegl-dev pipewire pipewire-audio pulseaudio-utils
+    sudo apt install -y git pipx libportaudio2 portaudio19-dev libasound2-dev libegl1 libegl-dev pipewire pipewire-audio pulseaudio-utils
     success "System dependencies installed"
 
     if ! id "${CHOCOPI_USER}" &>/dev/null; then
@@ -157,14 +157,12 @@ fi
 info "Setting up Python ${PYTHON_VERSION} environment..."
 
 if [[ "$PLATFORM" == "darwin" ]]; then
-    uv venv "${INSTALL_DIR}/.venv" --python "${PYTHON_VERSION}"
-    uv pip install -e "${INSTALL_DIR}" --python "${INSTALL_DIR}/.venv/bin/python"
-    chmod +x "${INSTALL_DIR}/chocopi"
+    (cd "${INSTALL_DIR}" && uv sync --python "${PYTHON_VERSION}")
+    chmod +x "${INSTALL_DIR}/pi/chocopi/chocopi"
 else
     UV="${CHOCOPI_HOME}/.local/bin/uv"
-    sudo -u "${CHOCOPI_USER}" "$UV" venv "${INSTALL_DIR}/.venv" --clear --python "${PYTHON_VERSION}"
-    sudo -u "${CHOCOPI_USER}" "$UV" pip install -e "${INSTALL_DIR}" --python "${INSTALL_DIR}/.venv/bin/python"
-    sudo chmod +x "${INSTALL_DIR}/chocopi"
+    sudo -u "${CHOCOPI_USER}" bash -c "cd '${INSTALL_DIR}' && '${UV}' sync --python '${PYTHON_VERSION}'"
+    sudo chmod +x "${INSTALL_DIR}/pi/chocopi/chocopi"
 fi
 
 success "Python environment configured"
@@ -189,13 +187,13 @@ if [[ "$PLATFORM" == "linux" ]]; then
         WP_CONFIG_FILE="51-bluetooth-audio.conf"
     fi
 
-    if [[ -f "${INSTALL_DIR}/install/wireplumber/${WP_CONFIG_FILE}" ]]; then
+    if [[ -f "${INSTALL_DIR}/pi/install/wireplumber/${WP_CONFIG_FILE}" ]]; then
         sudo -u "${CHOCOPI_USER}" mkdir -p "${WP_CONFIG_DIR}"
-        sudo -u "${CHOCOPI_USER}" cp "${INSTALL_DIR}/install/wireplumber/${WP_CONFIG_FILE}" "${WP_CONFIG_DIR}/"
+        sudo -u "${CHOCOPI_USER}" cp "${INSTALL_DIR}/pi/install/wireplumber/${WP_CONFIG_FILE}" "${WP_CONFIG_DIR}/"
         success "WirePlumber Bluetooth config installed"
     fi
 
-    PW_EC_SRC="${INSTALL_DIR}/install/pipewire/99-echo-cancel.conf"
+    PW_EC_SRC="${INSTALL_DIR}/pi/install/pipewire/99-echo-cancel.conf"
     if [[ -f "${PW_EC_SRC}" ]]; then
         PW_CONFIG_DIR="${CHOCOPI_HOME}/.config/pipewire/pipewire.conf.d"
         sudo -u "${CHOCOPI_USER}" mkdir -p "${PW_CONFIG_DIR}"
@@ -208,7 +206,7 @@ if [[ "$PLATFORM" == "linux" ]]; then
     success "PipeWire and Bluetooth services configured"
 
     info "Installing systemd service..."
-    sudo cp "${INSTALL_DIR}/install/systemd/chocopi.service" /etc/systemd/system/
+    sudo cp "${INSTALL_DIR}/pi/install/systemd/chocopi.service" /etc/systemd/system/
     sudo systemctl daemon-reload
     sudo systemctl enable chocopi
     success "Systemd service installed and enabled"
@@ -273,7 +271,7 @@ if [[ "$PLATFORM" == "linux" ]]; then
     echo
 else
     tip "To run ChocoPi:"
-    echo "  cd ${INSTALL_DIR} && ./chocopi"
+    echo "  cd ${INSTALL_DIR} && ./pi/chocopi/chocopi"
     echo
     tip "Audio troubleshooting:"
     echo "  python -m sounddevice    # list audio devices"

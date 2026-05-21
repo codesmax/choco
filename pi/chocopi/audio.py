@@ -4,7 +4,7 @@ import numpy as np
 import simpleaudio as sa
 import sounddevice as sd
 from loguru import logger
-from chocopi.config import SOUNDS_PATH
+from chococore.config import SOUNDS_PATH
 
 INT16_MIN = np.iinfo(np.int16).min
 INT16_MAX = np.iinfo(np.int16).max
