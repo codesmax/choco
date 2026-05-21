@@ -68,7 +68,7 @@ _warning_no = logger.level("WARNING").no
 
 def _log_filter(record):
     name = record["name"]
-    if name.startswith("chocopi"):
+    if name.startswith("chococore") or name.startswith("chocopi"):
         return record["level"].no >= _choco_level_no
     if name.startswith("pipecat"):
         return record["level"].no >= _pipecat_level_no

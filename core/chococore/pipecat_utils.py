@@ -13,7 +13,7 @@ from pipecat.frames.frames import (
 from pipecat.observers.base_observer import BaseObserver, FramePushed
 from pipecat.processors.frame_processor import FrameProcessor
 
-from chocopi.config import SOUNDS_PATH
+from chococore.config import SOUNDS_PATH
 
 
 def load_sound_frame(filename: str) -> OutputAudioRawFrame | None:

@@ -5,7 +5,7 @@ import os
 import urllib.request
 import yaml
 from loguru import logger
-from chocopi.config import PROJECT_ROOT, CONFIG
+from chococore.config import PROJECT_ROOT, CONFIG
 
 MEMORY_TYPES = ("joke", "vocab", "story", "fact", "topic")
 MAX_ITEMS_PER_TYPE = {
