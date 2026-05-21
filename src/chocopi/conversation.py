@@ -1,7 +1,6 @@
 """Conversation session powered by Pipecat"""
 import asyncio
 import re
-import time
 
 from loguru import logger
 from pipecat.frames.frames import EndFrame, LLMRunFrame
@@ -39,9 +38,7 @@ from chocopi.providers import create_llm_service
 class ConversationSession:
     """Conversation session backed by a Pipecat voice LLM pipeline."""
 
-    def __init__(self, learning_language="ko", profile=None, display=None):
-        if profile is None:
-            raise ValueError("ConversationSession requires a profile configuration")
+    def __init__(self, learning_language, profile, display=None):
 
         provider_config = CONFIG.providers[PROVIDER]
         self.session_config = CONFIG.session
@@ -49,7 +46,7 @@ class ConversationSession:
         self.profile_name = profile.get("name", "default").lower()
         self.memory = load_memory(self.profile_name)
         self.lang_config = CONFIG.languages[learning_language]
-        self.comprehension_age = profile["learning_languages"][learning_language]["comprehension_age"]
+        comprehension_age = profile["learning_languages"][learning_language]["comprehension_age"]
         self.display = display
 
         self.is_greeting = True
@@ -57,7 +54,6 @@ class ConversationSession:
         self.last_user_transcript = ""
         self.last_assistant_transcript = ""
         self.transcript_log = []
-        self.session_start_time = None
         self._consecutive_echo_turns = 0
         self._use_local_vad = bool(provider_config.vad and provider_config.vad.local)
 
@@ -66,7 +62,7 @@ class ConversationSession:
             "user_age": profile["user_age"],
             "native_language": native_language,
             "learning_language": self.lang_config.language_name,
-            "comprehension_age": self.comprehension_age,
+            "comprehension_age": comprehension_age,
             "sleep_word": self.lang_config.sleep_word,
         }
 
@@ -119,16 +115,17 @@ class ConversationSession:
             return True
         return False
 
-    def _record_transcript(self, role: str, transcript: str, log_format: str, display_role: str):
-        logger.info(log_format, transcript)
+    def _record_transcript(self, role: str, transcript: str):
         if role == "user":
+            logger.info("🗣️  You said: {}", transcript)
             self.last_user_transcript = transcript
         else:
+            logger.info("🤖 Choco says: {}", transcript)
             self.last_assistant_transcript = transcript
         if transcript:
             self.transcript_log.append({"role": role, "text": transcript})
         if self.display:
-            self.display.add_transcript(display_role, transcript)
+            self.display.add_transcript("choco" if role == "assistant" else role, transcript)
 
     # --- Main loop ---
 
@@ -177,7 +174,7 @@ class ConversationSession:
             if not message.content:
                 return
 
-            self._record_transcript("user", message.content, "🗣️  You said: {}", "user")
+            self._record_transcript("user", message.content)
 
             if self.is_greeting:
                 return
@@ -207,11 +204,10 @@ class ConversationSession:
                 logger.debug("⚠️  Empty assistant turn (interrupted={})", message.interrupted)
                 return
 
-            self._record_transcript("assistant", message.content, "🤖 Choco says: {}", "choco")
+            self._record_transcript("assistant", message.content)
 
             if self.is_greeting:
                 self.is_greeting = False
-                self.session_start_time = time.monotonic()
                 logger.info("👂 Choco is listening...")
                 return
 
@@ -236,16 +232,15 @@ class ConversationSession:
             try:
                 memory = await asyncio.to_thread(
                     summarize_session,
-                    self.profile_name,
                     self.profile,
                     self.transcript_log,
                     memory,
                 )
             except Exception as exc:
                 logger.warning("Memory summarization error: {}", exc)
-                update_memory(memory, self.last_user_transcript, self.last_assistant_transcript)
+                update_memory(memory, self.last_user_transcript)
         else:
-            update_memory(memory, self.last_user_transcript, self.last_assistant_transcript)
+            update_memory(memory, self.last_user_transcript)
 
         try:
             await asyncio.to_thread(save_memory, self.profile_name, memory)

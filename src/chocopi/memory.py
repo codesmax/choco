@@ -3,7 +3,6 @@ import copy
 import json
 import os
 import urllib.request
-from pathlib import Path
 import yaml
 from loguru import logger
 from chocopi.config import PROJECT_ROOT, CONFIG
@@ -19,28 +18,12 @@ MAX_ITEMS_PER_TYPE = {
 
 
 def _memory_path(profile_name):
-    data_dir = PROJECT_ROOT / "data"
-    return data_dir / f"memory_{profile_name}.yml"
-
-
-def _default_memory():
-    return {
-        "summary": "",
-        "progress": {
-            "new_vocab": [],
-            "mistakes": [],
-            "strengths": [],
-            "next_focus": "",
-        },
-        "recent_items": [],
-        "recent_user_requests": [],
-    }
+    return PROJECT_ROOT / "data" / f"memory_{profile_name}.yml"
 
 
 def normalize_memory(memory):
     if not isinstance(memory, dict):
-        return _default_memory()
-
+        memory = {}
     memory.setdefault("summary", "")
     memory.setdefault("progress", {})
     memory["progress"].setdefault("new_vocab", [])
@@ -55,10 +38,9 @@ def normalize_memory(memory):
 def load_memory(profile_name):
     path = _memory_path(profile_name)
     if not path.exists():
-        return _default_memory()
+        return normalize_memory({})
     with path.open("r", encoding="utf-8") as file:
-        loaded = yaml.safe_load(file) or _default_memory()
-    return normalize_memory(loaded)
+        return normalize_memory(yaml.safe_load(file))
 
 
 def save_memory(profile_name, memory):
@@ -78,21 +60,13 @@ def build_memory_block(memory):
     if summary:
         parts.append(f"Summary: {summary}")
     if requests:
-        recent_requests = "; ".join(requests[-5:])
-        parts.append(f"Recent user requests: {recent_requests}")
+        parts.append(f"Recent user requests: {'; '.join(requests[-5:])}")
     if progress:
-        new_vocab = ", ".join(progress.get("new_vocab", [])[:5])
-        mistakes = ", ".join(progress.get("mistakes", [])[:5])
-        strengths = ", ".join(progress.get("strengths", [])[:5])
-        next_focus = progress.get("next_focus", "")
         progress_lines = []
-        if new_vocab:
-            progress_lines.append(f"New vocab: {new_vocab}")
-        if mistakes:
-            progress_lines.append(f"Mistakes: {mistakes}")
-        if strengths:
-            progress_lines.append(f"Strengths: {strengths}")
-        if next_focus:
+        for label, key in [("New vocab", "new_vocab"), ("Mistakes", "mistakes"), ("Strengths", "strengths")]:
+            if value := ", ".join(progress.get(key, [])[:5]):
+                progress_lines.append(f"{label}: {value}")
+        if next_focus := progress.get("next_focus", ""):
             progress_lines.append(f"Next focus: {next_focus}")
         if progress_lines:
             parts.append("Progress: " + " | ".join(progress_lines))
@@ -102,37 +76,24 @@ def build_memory_block(memory):
         if entries:
             parts.append(f"Recent {item_type}s (avoid repeating): " + " | ".join(entries[-5:]))
 
-    if not parts:
-        return "None"
-    return "\n".join(parts)
+    return "\n".join(parts) if parts else "None"
 
 
 def _append_item(memory, item_type, text, max_items):
-    memory.setdefault("recent_items", [])
-    memory["recent_items"].append({"type": item_type, "text": text})
-    # Keep only the last max_items for that type
-    filtered = [item for item in memory["recent_items"] if item.get("type") == item_type]
-    if len(filtered) > max_items:
-        to_remove = len(filtered) - max_items
-        kept = []
-        for item in memory["recent_items"]:
-            if item.get("type") == item_type and to_remove > 0:
-                to_remove -= 1
-                continue
-            kept.append(item)
-        memory["recent_items"] = kept
+    items = memory.setdefault("recent_items", [])
+    items.append({"type": item_type, "text": text})
+    of_type = [i for i in items if i.get("type") == item_type]
+    if len(of_type) > max_items:
+        items.remove(of_type[0])
 
 
-def update_memory(memory, user_text, assistant_text):
+def update_memory(memory, user_text):
     if not memory:
         return
-
     memory.setdefault("recent_user_requests", [])
-
     if user_text:
         memory["recent_user_requests"].append(user_text.strip())
         memory["recent_user_requests"] = memory["recent_user_requests"][-10:]
-
     if memory["recent_user_requests"]:
         memory["summary"] = "Recent topics: " + "; ".join(memory["recent_user_requests"][-3:])
 
@@ -147,11 +108,9 @@ def merge_summary(memory, summary_data):
 
     recent_requests = summary_data.get("recent_user_requests", [])
     if recent_requests:
-        memory.setdefault("recent_user_requests", [])
         for request in recent_requests:
-            if request:
-                normalized = str(request).strip()
-                if normalized and normalized not in memory["recent_user_requests"]:
+            if normalized := str(request).strip():
+                if normalized not in memory["recent_user_requests"]:
                     memory["recent_user_requests"].append(normalized)
         memory["recent_user_requests"] = memory["recent_user_requests"][-10:]
 
@@ -167,16 +126,14 @@ def merge_summary(memory, summary_data):
     for item in summary_data.get("recent_items", []) or []:
         item_type = (item.get("type") or "").strip().lower()
         text = (item.get("text") or "").strip()
-        if not item_type or not text or item_type not in MEMORY_TYPES:
-            continue
-        _append_item(memory, item_type, text, MAX_ITEMS_PER_TYPE[item_type])
+        if item_type and text and item_type in MEMORY_TYPES:
+            _append_item(memory, item_type, text, MAX_ITEMS_PER_TYPE[item_type])
 
     return memory
 
 
 def _extract_output_text(response_data):
-    output_text = response_data.get("output_text")
-    if output_text:
+    if output_text := response_data.get("output_text"):
         return output_text
     for item in response_data.get("output", []):
         for content in item.get("content", []):
@@ -186,21 +143,13 @@ def _extract_output_text(response_data):
 
 
 def _format_transcript_line(entry):
-    role = entry.get("role", "user")
-    label = "User" if role == "user" else "Choco"
+    label = "User" if entry.get("role") == "user" else "Choco"
     text = entry.get("text", "").strip()
-    if not text:
-        return ""
-    return f"{label}: {text}"
+    return f"{label}: {text}" if text else ""
 
 
 def _format_transcript(transcript_log):
-    lines = []
-    for entry in transcript_log:
-        line = _format_transcript_line(entry)
-        if line:
-            lines.append(line)
-    return "\n".join(lines)
+    return "\n".join(filter(None, (_format_transcript_line(e) for e in transcript_log)))
 
 
 def _format_transcript_tail(transcript_log, max_chars):
@@ -220,25 +169,16 @@ def _format_transcript_tail(transcript_log, max_chars):
 
 def _build_summary_payload(profile, transcript_text, memory):
     native_language = CONFIG.languages[profile["native_language"]].language_name
-    instructions = CONFIG.prompts.summary.format(
-        native_language=native_language
-    )
-    summary = memory.get("summary", "").strip()
-    if summary:
+    instructions = CONFIG.prompts.summary.format(native_language=native_language)
+    if summary := memory.get("summary", "").strip():
         transcript_text = f"Existing summary: {summary}\n\n{transcript_text}"
-
     payload = copy.deepcopy(CONFIG.summary_model)
     payload["instructions"] = instructions
-    payload["input"] = [
-        {
-            "role": "user",
-            "content": [{"type": "input_text", "text": transcript_text}],
-        },
-    ]
+    payload["input"] = [{"role": "user", "content": [{"type": "input_text", "text": transcript_text}]}]
     return payload
 
 
-def summarize_session(profile_name, profile, transcript_log, memory):
+def summarize_session(profile, transcript_log, memory):
     if not transcript_log:
         return memory
 
@@ -256,10 +196,7 @@ def summarize_session(profile_name, profile, transcript_log, memory):
     request = urllib.request.Request(
         "https://api.openai.com/v1/responses",
         data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
         method="POST",
     )
 

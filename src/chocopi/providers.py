@@ -1,5 +1,5 @@
 """Pipecat LLM service factories for each supported provider"""
-from loguru import logger
+import os
 
 
 def create_llm_service(
@@ -23,21 +23,8 @@ def create_llm_service(
 
 
 def _openai(config, session_instructions, transcription_instructions):
-    """
-    OpenAI Realtime API via Pipecat.
-
-    Uses SemanticTurnDetection (server-side intelligent turn completion) alongside
-    optional SileroVADAnalyzer (local VAD) in the user aggregator. Both can run
-    simultaneously — local VAD provides fine-grained activity signals while
-    semantic turn detection determines response timing.
-
-    Minimal subclass: _truncate_current_audio_response is a no-op to prevent
-    invalid_value server errors on interruption. Pipecat's byte-count tracking
-    can diverge from the server's committed audio duration, causing the server to
-    reject truncation requests with "Audio content Xms is already shorter than Yms".
-    Skipping the truncate event lets the session continue cleanly.
-    """
-    import os
+    # _truncate_current_audio_response no-op: pipecat's byte-count tracking can diverge
+    # from the server's committed audio duration, causing invalid_value errors on interruption.
     from pipecat.services.openai.realtime.events import (
         AudioConfiguration,
         AudioInput,
@@ -85,23 +72,6 @@ def _openai(config, session_instructions, transcription_instructions):
 
 
 def _google(config, session_instructions):
-    """
-    Google Gemini Live API via Pipecat (pipecat-ai[google]).
-
-    All instructions baked into session_instructions at startup; no per-response
-    injection available in Gemini Live.
-
-    VAD: when vad=local, server-side VAD is disabled (GeminiVADParams(disabled=True))
-    and Silero handles turn detection via LLMUserAggregatorParams. This eliminates
-    the echo loop where Gemini's server VAD triggered on speaker output.
-
-    When vad=server, optional sensitivity tuning is available via vad_settings config:
-      start_sensitivity: low | medium | high
-      end_sensitivity: low | medium | high
-      silence_duration_ms: int
-      prefix_padding_ms: int
-    """
-    import os
     from pipecat.services.google.gemini_live.llm import GeminiLiveLLMService, GeminiVADParams
 
     if vad_config := config.vad and config.vad.server:
@@ -126,15 +96,8 @@ def _google(config, session_instructions):
 
 
 def _ultravox(config, session_instructions):
-    """
-    Ultravox Realtime API via Pipecat (pipecat-ai[ultravox]).
-
-    Pipecat bug workaround: UltravoxRealtimeLLMService.__init__ only sets _selected_tools
-    when one_shot_selected_tools is passed, but _start_one_shot_call unconditionally
-    evaluates `if self._selected_tools`, raising AttributeError before any API call.
-    Minimal subclass retained until fixed upstream.
-    """
-    import os
+    # _selected_tools guard: pipecat bug — attribute only set when one_shot_selected_tools passed,
+    # but _start_one_shot_call evaluates it unconditionally.
     from pipecat.services.ultravox.llm import OneShotInputParams, UltravoxRealtimeLLMService as _Base
 
     class UltravoxRealtimeLLMService(_Base):

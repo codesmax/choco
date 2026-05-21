@@ -3,7 +3,6 @@ import os
 import numpy as np
 import simpleaudio as sa
 import sounddevice as sd
-import soundfile as sf
 from loguru import logger
 from chocopi.config import SOUNDS_PATH
 
@@ -58,7 +57,7 @@ class AudioManager:
             self.input_stream.close()
             self.input_stream = None
 
-    def start_playing(self, data, sample_rate=24000, blocksize=4096):
+    def start_playing(self, data, sample_rate=24000):
         """Play audio file or data (non-blocking)"""
         try:
             self.stop_playing()

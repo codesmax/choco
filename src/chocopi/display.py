@@ -1,5 +1,4 @@
 import asyncio
-import os
 import time
 import pygame
 from threading import Lock
@@ -86,10 +85,10 @@ class DisplayManager:
     def _load_font(self):
         """Load font with multilingual support"""
         font_size = self.config.font_size
-        bundled_font = os.path.join(FONTS_PATH, self.config.font)
-        if os.path.exists(bundled_font):
+        bundled_font = FONTS_PATH / self.config.font
+        if bundled_font.exists():
             logger.info("📝 Using bundled font: {}", bundled_font)
-            return pygame.font.Font(bundled_font, font_size)
+            return pygame.font.Font(str(bundled_font), font_size)
 
         # Fallback to system fonts with multilingual support
         system_fonts = ['notosanscjk', 'notosans', 'arial', 'helvetica', 'freesans']
@@ -98,19 +97,16 @@ class DisplayManager:
 
     def _load_sprites(self):
         """Load idle and speaking sprites"""
-        # Idle
-        idle_path = os.path.join(IMAGES_PATH, self.config.sprites.idle)
-        idle_sprite = pygame.image.load(idle_path)
+        idle_path = IMAGES_PATH / self.config.sprites.idle
+        idle_sprite = pygame.image.load(str(idle_path))
         if idle_sprite.get_size() == (self.pane_width, self.screen_height):
             self.idle_sprite = idle_sprite
         else:
             self.idle_sprite = pygame.transform.smoothscale(idle_sprite, (self.pane_width, self.screen_height))
 
-        # Speaking sprite sheet (horizontal layout: 4 frames)
-        speaking_path = os.path.join(IMAGES_PATH, self.config.sprites.speaking)
-        spritesheet = pygame.image.load(speaking_path)
+        speaking_path = IMAGES_PATH / self.config.sprites.speaking
+        spritesheet = pygame.image.load(str(speaking_path))
 
-        # Split into 4 frames scaled to pane size
         frame_width = spritesheet.get_width() // 4
         frame_height = spritesheet.get_height()
 
@@ -119,11 +115,9 @@ class DisplayManager:
             scaled_frame = pygame.transform.smoothscale(frame, (self.pane_width, self.screen_height))
             self.speaking_frames.append(scaled_frame)
 
-        # Sleeping sprite sheet (horizontal layout: 4 frames)
-        sleeping_path = os.path.join(IMAGES_PATH, self.config.sprites.sleeping)
-        sleeping_sheet = pygame.image.load(sleeping_path)
+        sleeping_path = IMAGES_PATH / self.config.sprites.sleeping
+        sleeping_sheet = pygame.image.load(str(sleeping_path))
 
-        # Split into 4 frames scaled to full screen
         frame_width = sleeping_sheet.get_width() // 4
         frame_height = sleeping_sheet.get_height()
 
@@ -176,13 +170,11 @@ class DisplayManager:
         self.screen.fill(transcript_bg, (self.pane_width, 0, self.transcript_width, self.screen_height))
 
         if is_speaking:
-            # Animate through ping-pong frames
             frame_idx = self.ping_pong_frames[animation_frame]
             self.screen.blit(self.speaking_frames[frame_idx], (0, 0))
         else:
             self.screen.blit(self.idle_sprite, (0, 0))
 
-        # Render transcripts
         self._render_transcripts()
 
         pygame.display.flip()
@@ -202,7 +194,6 @@ class DisplayManager:
         y = self.screen_height - self.transcript_margin
         line_height = self.config.font_size + self.config.line_spacing
         for idx, (speaker, wrapped_lines) in enumerate(reversed(transcripts_copy)):
-            # Most recent transcript uses active color
             if idx == 0:
                 color = active_color
             elif speaker == "user":
@@ -210,15 +201,10 @@ class DisplayManager:
             else:
                 color = choco_color
 
-            # Render lines from bottom up
             for line in reversed(wrapped_lines):
                 text_surface = self.font.render(line, True, color)
-
-                # Check if space is available at top
                 if y - text_surface.get_height() < 0:
                     return
-
-                # Draw text
                 self.screen.blit(text_surface, (self.pane_width + self.transcript_margin, y - text_surface.get_height()))
                 y -= line_height
 
@@ -229,7 +215,7 @@ class DisplayManager:
         current_line = []
 
         for word in words:
-            # Test to account for variability in line width
+            # Check rendered line width
             test_line = ' '.join(current_line + [word])
             test_surface = self.font.render(test_line, True, (255, 255, 255))
 
@@ -275,10 +261,8 @@ class DisplayManager:
         if current_time - self.last_frame_time >= frame_duration:
             with self.lock:
                 if not self.is_active:
-                    # Advance sleeping frame (sequential loop)
                     self.sleeping_animation_frame = (self.sleeping_animation_frame + 1) % 4
                 elif self.is_speaking:
-                    # Advance ping-pong frame
                     self.animation_frame = (self.animation_frame + 1) % len(self.ping_pong_frames)
 
             self.last_frame_time = current_time
@@ -293,12 +277,10 @@ class DisplayManager:
             return
 
         self.is_running = True
-        frame_count = 0
 
         logger.debug("🔄 Display loop starting...")
         try:
             while self.is_running:
-                # Handle pygame events
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
                         self.is_running = False
@@ -306,16 +288,9 @@ class DisplayManager:
                 self._update_animation()
                 self._render_frame()
 
-                # Variable FPS: refresh rate when awake, sleeping animation rate when sleeping
                 with self.lock:
                     fps = self.config.frame_rates.refresh if self.is_active else self.config.frame_rates.sleeping
                 await asyncio.sleep(1.0 / fps)
-
-                frame_count += 1
-                if frame_count == 1:
-                    logger.debug("✅ First frame rendered")
-                elif frame_count % (fps * 10) == 0:  # Every 10 seconds
-                    logger.debug("🎬 Display running... {} frames rendered", frame_count)
         finally:
             logger.debug("🛑 Display loop ending")
             pygame.quit()

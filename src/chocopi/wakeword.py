@@ -1,6 +1,5 @@
 """Wake word detection using OpenWakeWord"""
 import asyncio
-import os
 import queue
 import openwakeword
 from openwakeword.model import Model
@@ -16,11 +15,10 @@ class WakeWordDetector:
         self.config = CONFIG.openwakeword
         self.audio_queue = queue.Queue()
         self.framework = 'tflite' if IS_PI else 'onnx'
-        self.model_paths = []
-        for lang_config in CONFIG.languages.values():
-            model_name = lang_config.model
-            model_path = os.path.join(MODELS_PATH, f"{model_name}.{self.framework}")
-            self.model_paths.append(model_path)
+        self.model_paths = [
+            str(MODELS_PATH / f"{lang.model}.{self.framework}")
+            for lang in CONFIG.languages.values()
+        ]
 
         # Download required models once if needed
         openwakeword.utils.download_models()
@@ -50,7 +48,6 @@ class WakeWordDetector:
                 except queue.Full:
                     # Drop frame if queue falls behind
                     logger.warning("⚠️  Audio queue full, dropping frame")
-                    pass
 
             AUDIO.start_recording(
                 sample_rate=self.config.sample_rate,
@@ -64,7 +61,7 @@ class WakeWordDetector:
                 # Poll queue with timeout to yield control
                 try:
                     chunk = self.audio_queue.get(timeout=0.01)
-                    chunk_flat = chunk[:, 0].flatten() # mono channel
+                    chunk_flat = chunk[:, 0].flatten()
                     prediction = self.model.predict(chunk_flat)
                     wake_word, score = max(prediction.items(), key=lambda x: x[1])
                     if score > self.config.threshold:

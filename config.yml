@@ -24,7 +24,7 @@ providers:
     model: "gpt-realtime-mini-2025-12-15"
     voice: "marin"
     transcription_model: "gpt-4o-mini-transcribe"
-    noise_reduction: "near_field"  # "near_field" | "far_field" | null
+    noise_reduction: "far_field"  # "near_field" | "far_field" | null
     output_speed: 0.75
     vad:
       local: true
@@ -82,7 +82,7 @@ session:
   sleep_word_threshold: 80
   echo_detection:
     overlap_threshold: 80  # min fuzz.partial_ratio to flag a turn as an echo
-    max_words: 4            # only flag short responses as potential echoes
+    max_words: 4           # only flag short responses as potential echoes
     consecutive_limit: 5   # end session after this many consecutive echo turns
 
 summary:
