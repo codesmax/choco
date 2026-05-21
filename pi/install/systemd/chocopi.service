@@ -11,7 +11,7 @@ Group=chocopi
 WorkingDirectory=/opt/chocopi
 Environment=PATH=/opt/chocopi/.venv/bin:/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/opt/chocopi/chocopi
+ExecStart=/opt/chocopi/pi/chocopi/chocopi
 Restart=always
 RestartSec=10
 TimeoutStopSec=5

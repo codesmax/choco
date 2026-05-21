@@ -1,7 +1,12 @@
 # Agent Instructions
 
-This is a voice assistant project called **ChocoPi** — a Raspberry Pi-focused language tutor for kids.
-It detects wake words on-device with OpenWakeWord, then runs live voice conversations via a configurable LLM provider (OpenAI Realtime by default; Gemini Live and Ultravox also supported).
+This is a voice assistant project called **Choco** — a voice-powered language tutor for kids.
+The repo contains two packages in a uv workspace:
+
+- **chococore** (`core/`) — platform-agnostic conversation logic, providers, memory, prompts
+- **chocopi** (`pi/`) — Raspberry Pi kiosk app: wake word detection, audio I/O, optional pygame display
+
+The Pi kiosk detects wake words on-device with OpenWakeWord, then runs live voice conversations via a configurable LLM provider (OpenAI Realtime by default; Gemini Live and Ultravox also supported).
 Sessions are language-targeted (English, Korean, Spanish, Chinese) and can end via a language-specific sleep word.
 Session history is summarized and persisted to memory files for continuity across conversations.
 
@@ -9,7 +14,7 @@ Session history is summarized and persisted to memory files for continuity acros
 
 ```bash
 # Preferred — bash wrapper that sets env vars, activates venv, runs python -m chocopi
-./chocopi
+./pi/chocopi/chocopi
 
 # Or directly
 python -m chocopi
@@ -18,27 +23,23 @@ python -m chocopi
 CHOCO_LOG_LEVEL=DEBUG python -m chocopi
 ```
 
-There is no standalone script at the repo root — `./chocopi` is a bash wrapper and the Python package lives under `src/chocopi/`.
-
 ## Developer Setup
 
 ```bash
-uv venv .venv --python 3.11
-source .venv/bin/activate
-uv pip install -e .
-cp .env.example .env   # then add your API key
+uv sync                        # creates .venv and installs all workspace packages
+cp .env.example .env           # then add your API key
 ```
 
 Python 3.11 is required because `tflite-runtime` (subdependency of `openwakeword`) has no wheels for 3.12+.
 
 ## Runtime Flow
 
-1. `./chocopi` sets environment defaults, activates `.venv`, and runs `python -m chocopi`.
-2. `src/chocopi/chocopi.py` initializes config, wake-word detector, and optional display.
+1. `./pi/chocopi/chocopi` sets environment defaults, activates `.venv`, and runs `python -m chocopi`.
+2. `pi/chocopi/chocopi.py` initializes config, wake-word detector, and optional display.
 3. App loop waits in `WakeWordDetector.listen()`.
-4. On wake word, it maps the detected model to a learning language and starts `ConversationSession`.
+4. On wake word, it maps the detected model to a learning language, creates `LocalAudioTransport`, and starts `ConversationSession`.
 5. `ConversationSession.__init__` builds session instructions (profile + memory), creates the LLM service, and seeds an `LLMContext` with a greeting instruction as the first user turn.
-6. `ConversationSession.run()` assembles the Pipecat pipeline, registers event handlers on the aggregators, then queues `LLMRunFrame` to trigger the greeting.
+6. `ConversationSession.run(transport)` accepts the transport, assembles the Pipecat pipeline, registers event handlers on the aggregators, then queues `LLMRunFrame` to trigger the greeting.
 7. `on_user_turn_stopped` fires after each user turn: logs transcript, runs echo/sleep-word detection.
 8. `on_assistant_turn_stopped` fires after each assistant turn: logs transcript, marks end of greeting phase, queues `EndFrame` on termination.
 9. On session end, `chocopi.py` plays the bye sound, calls `session.persist_memory()` to summarize and write memory to disk.
@@ -47,18 +48,17 @@ Python 3.11 is required because `tflite-runtime` (subdependency of `openwakeword
 
 | File | Purpose |
 |---|---|
-| `chocopi` | Bash wrapper — sets env, activates venv, runs `python -m chocopi` |
-| `src/chocopi/__main__.py` | Module entry point — imports and calls `main()` |
-| `src/chocopi/chocopi.py` | Top-level orchestrator and graceful shutdown |
-| `src/chocopi/wakeword.py` | OpenWakeWord model loading and inference loop |
-| `src/chocopi/conversation.py` | Pipecat pipeline setup and `ConversationSession` with event-handler-based turn logic |
-| `src/chocopi/pipecat_utils.py` | Pipecat `FrameProcessor` subclasses (`SentSoundProcessor`, `DisplaySyncProcessor`), `TranscriptObserver`, and `load_sound_frame` |
-| `src/chocopi/providers.py` | Pipecat LLM service factories (OpenAI Realtime, Gemini Live, Ultravox) |
-| `src/chocopi/audio.py` | Shared input/output audio manager (wakeword + conversation) |
-| `src/chocopi/display.py` | Pygame-ce UI (sprites + transcript pane), enabled by `CHOCO_DISPLAY=1` |
-| `src/chocopi/memory.py` | Session summary (via gpt-4.1-nano), memory merge, YAML persistence |
-| `src/chocopi/language.py` | Stub (no-op) — language detection removed |
-| `src/chocopi/config.py` | Global config/env loading, platform detection, path constants |
+| `pi/chocopi/chocopi` | Bash wrapper — sets env, activates venv, runs `python -m chocopi` |
+| `pi/chocopi/__main__.py` | Module entry point — imports and calls `main()` |
+| `pi/chocopi/chocopi.py` | Top-level orchestrator; creates transport and passes to session |
+| `pi/chocopi/wakeword.py` | OpenWakeWord model loading and inference loop |
+| `pi/chocopi/audio.py` | Shared input/output audio manager (wakeword + conversation) |
+| `pi/chocopi/display.py` | Pygame-ce UI (sprites + transcript pane), enabled by `CHOCO_DISPLAY=1` |
+| `core/chococore/conversation.py` | Pipecat pipeline setup and `ConversationSession` with event-handler-based turn logic |
+| `core/chococore/pipecat_utils.py` | Pipecat `FrameProcessor` subclasses (`SentSoundProcessor`, `DisplaySyncProcessor`), `TranscriptObserver`, and `load_sound_frame` |
+| `core/chococore/providers.py` | Pipecat LLM service factories (OpenAI Realtime, Gemini Live, Ultravox) |
+| `core/chococore/memory.py` | Session summary (via gpt-4.1-nano), memory merge, YAML persistence |
+| `core/chococore/config.py` | Global config/env loading, platform detection, path constants |
 | `config.yml` | Primary runtime configuration (profiles, languages, prompts, model settings) |
 
 ## Configuration
@@ -67,7 +67,7 @@ Python 3.11 is required because `tflite-runtime` (subdependency of `openwakeword
 - **Runtime config:** `config.yml` — read at import time by `config.py`.
 - **Active profile:** `profile` key in `config.yml`.
 - **Active provider:** `provider` key in `config.yml` (`openai` | `google` | `ultravox`).
-- **Wake-word models:** each `languages.<code>.model` must match files in `models/` (`.tflite` on ARM, `.onnx` elsewhere).
+- **Wake-word models:** each `languages.<code>.model` must match files in `assets/models/` (`.tflite` on ARM, `.onnx` elsewhere).
 - **Session memory:** stored under `data/memory_<profile>.yml`.
 
 ## Architecture
@@ -75,15 +75,17 @@ Python 3.11 is required because `tflite-runtime` (subdependency of `openwakeword
 ### Pipeline
 
 ```
-LocalAudioTransport.input()
+LocalAudioTransport.input()     (created in chocopi.py, passed to ConversationSession.run)
   → user_aggregator       (LLMContextAggregatorPair)
+  → SentSoundProcessor    (FrameProcessor)
   → LLM service           (provider-specific)
   → DisplaySyncProcessor  (FrameProcessor, only when display is enabled)
   → LocalAudioTransport.output()
   → assistant_aggregator  (LLMContextAggregatorPair)
 ```
 
-- `ConversationSession` owns the pipeline; runs it via `PipelineRunner(handle_sigint=False)`.
+- `ConversationSession` lives in `chococore` and owns the pipeline; runs it via `PipelineRunner(handle_sigint=False)`.
+- Transport is injected by the Pi orchestrator (`chocopi.py`); core has no dependency on `LocalAudioTransport`.
 - No custom frame processor for turn logic — everything lives in event handlers registered on the aggregators.
 - `enable_auto_context_summarization=True` on `LLMAssistantAggregatorParams` (server-side, 8k tokens / 20 messages default).
 
@@ -105,7 +107,7 @@ LocalAudioTransport.input()
 - Conversation proceeds naturally (session instructions tell the assistant to say goodbye on sleep word).
 - `on_assistant_turn_stopped` with `is_terminating=True` → queues `EndFrame`.
 
-### Providers (`providers.py`)
+### Providers (`core/chococore/providers.py`)
 
 `create_llm_service(provider_name, provider_config, session_instructions, transcription_instructions="")` returns a configured service instance.
 
@@ -113,7 +115,7 @@ All session instructions are baked in at startup — no per-response injection. 
 
 **`openai`**: Minimal subclass — `_truncate_current_audio_response` is a no-op to prevent `invalid_value` server errors when Pipecat's byte-count tracking diverges from the server's committed audio duration on interruption. Uses `SemanticTurnDetection` for server-side turn completion; optional local `SileroVADAnalyzer` runs simultaneously when `vad: local` is set.
 
-**`google`**: No subclass needed. `GeminiVADParams(disabled=True)` set when `vad: local` to eliminate the echo loop where Gemini's server VAD triggers on speaker output; Silero handles turn detection instead. Optional `vad_settings` keys (`start_sensitivity`, `end_sensitivity`, `silence_duration_ms`, `prefix_padding_ms`) tune server VAD when `vad: server`.
+**`google`**: No subclass needed. `GeminiVADParams(disabled=True)` set when `vad: local` to eliminate the echo loop where Gemini's server VAD triggers on speaker output; Silero handles turn detection instead.
 
 **`ultravox`**: Minimal subclass — `_selected_tools` `hasattr` guard prevents `AttributeError` in `_start_one_shot_call` (upstream Pipecat bug: `_selected_tools` only set when `one_shot_selected_tools` is passed, but unconditionally evaluated).
 
@@ -127,7 +129,7 @@ All session instructions are baked in at startup — no per-response injection. 
 - Playback: `simpleaudio` (runs simultaneously with recording)
 - `pipewire-alsa` provides ALSA compatibility layer on Linux
 - WirePlumber manages device routing and Bluetooth profiles
-- PipeWire echo cancel module (`99-echo-cancel.conf`) provides WebRTC AEC as system-level backstop on Linux
+- PipeWire echo cancel module (`pi/install/pipewire/99-echo-cancel.conf`) provides WebRTC AEC as system-level backstop on Linux
 - Echo/feedback loop detection: `_is_echo()` flags user turns ≤ 4 words with high overlap to the last assistant response; session ends after 5 consecutive echo turns
 
 ### Display
@@ -154,11 +156,11 @@ Optional pygame-ce UI with sprite animations and transcript panel (`CHOCO_DISPLA
 
 | File | Purpose |
 |---|---|
-| `install.sh` | Cross-platform installer — detects macOS/Linux and runs the appropriate setup |
-| `install/systemd/chocopi.service` | Systemd service definition (Pi) |
-| `install/wireplumber/51-bluetooth-audio.lua` | WirePlumber Bluetooth HSP/HFP profile config |
-| `install/wireplumber/51-bluetooth-audio.conf` | WirePlumber logind integration config |
-| `install/pipewire/99-echo-cancel.conf` | PipeWire WebRTC AEC module config |
+| `pi/install.sh` | Cross-platform installer — detects macOS/Linux and runs the appropriate setup |
+| `pi/install/systemd/chocopi.service` | Systemd service definition (Pi) |
+| `pi/install/wireplumber/51-bluetooth-audio.lua` | WirePlumber Bluetooth HSP/HFP profile config |
+| `pi/install/wireplumber/51-bluetooth-audio.conf` | WirePlumber logind integration config |
+| `pi/install/pipewire/99-echo-cancel.conf` | PipeWire WebRTC AEC module config |
 
 ## Audio Debugging
 
@@ -175,28 +177,33 @@ sudo journalctl -u chocopi -f   # Service logs on Pi
 
 ## Dependencies
 
-Managed via `pyproject.toml` (no `requirements.txt`). Key packages:
+Managed via uv workspace (`pyproject.toml` at repo root + `core/pyproject.toml` + `pi/pyproject.toml`). Run `uv sync` to install everything.
 
-- `pipecat-ai[openai,google,ultravox,local]` — voice pipeline + all providers
+**chococore** (`core/pyproject.toml`):
+- `pipecat-ai[openai,google,ultravox]` — voice pipeline + providers
+- `rapidfuzz` — fuzzy sleep-word matching
+- `python-box`, `pyyaml`, `python-dotenv`, `loguru` — config + logging
+
+**chocopi** (`pi/pyproject.toml`) — adds:
+- `pipecat-ai[local]` — LocalAudioTransport
 - `openwakeword` — wake word detection
 - `sounddevice` — audio recording
 - `simpleaudio` — audio playback
 - `pygame-ce` — optional visual display
-- `rapidfuzz` — fuzzy sleep-word matching
 - `numpy>=1.26.4,<2.0` — required for tflite-runtime compatibility
-- `python-dotenv` — `.env` file loading
-- `pyyaml` — config file parsing
 
 ## Behavior Notes
 
 - Audio manager is global (`AUDIO`) and shared across wakeword and conversation phases.
+- `LocalAudioTransport` is constructed fresh per session in `chocopi.py` and passed into `ConversationSession.run(transport)`.
 - If summarization fails, memory still updates via fallback using last transcript snippets.
 - Display is optional; app runs headless without it.
 - `CHOCO_PROFILE` and `CHOCO_PROVIDER` env vars override `config.yml` at runtime.
 
 ## Change Guidelines
 
-- Provider-specific logic belongs in `providers.py`, not in `conversation.py`.
+- Provider-specific logic belongs in `core/chococore/providers.py`, not in `conversation.py`.
+- `LocalAudioTransport` and Pi-specific deps must not be imported in `core/chococore/`.
 - Keep audio side effects explicit; avoid introducing competing streams.
 - Maintain compatibility between `config.yml` structure and code lookups before renaming keys.
 - Do not commit `.env` or profile memory files from `data/`.
