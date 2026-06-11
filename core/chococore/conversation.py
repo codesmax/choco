@@ -37,7 +37,7 @@ from chococore.providers import create_llm_service
 class ConversationSession:
     """Conversation session backed by a Pipecat voice LLM pipeline."""
 
-    def __init__(self, learning_language, profile, display=None):
+    def __init__(self, learning_language, profile, display=None, on_session_ending=None, sent_sound=True):
 
         provider_config = CONFIG.providers[PROVIDER]
         self.session_config = CONFIG.session
@@ -48,8 +48,10 @@ class ConversationSession:
         comprehension_age = profile["learning_languages"][learning_language]["comprehension_age"]
         self.display = display
 
+        self._on_session_ending = on_session_ending
         self.is_greeting = True
         self.is_terminating = False
+        self._termination_reason = None
         self.last_user_transcript = ""
         self.last_assistant_transcript = ""
         self.transcript_log = []
@@ -89,7 +91,7 @@ class ConversationSession:
             transcription_instructions,
         )
 
-        self._sent_frame = load_sound_frame(CONFIG.sounds.sent)
+        self._sent_frame = load_sound_frame(CONFIG.sounds.sent) if sent_sound else None
 
     # --- Transcript helpers ---
 
@@ -128,7 +130,7 @@ class ConversationSession:
 
     # --- Main loop ---
 
-    async def run(self, transport):
+    async def run(self, transport, extra_processors=None, extra_observers=None):
         """Build and run the Pipecat pipeline for this conversation session."""
         vad_params = None
         if self._use_local_vad:
@@ -148,6 +150,8 @@ class ConversationSession:
         pipeline_stages = [transport.input(), user_aggregator, SentSoundProcessor(lambda: self.is_greeting, self._sent_frame), self._llm_service]
         if self.display:
             pipeline_stages.append(DisplaySyncProcessor(self.display))
+        if extra_processors:
+            pipeline_stages.extend(extra_processors)
         pipeline_stages.extend([transport.output(), assistant_aggregator])
 
         pipeline = Pipeline(pipeline_stages)
@@ -158,8 +162,15 @@ class ConversationSession:
                 enable_usage_metrics=True,
             ),
             idle_timeout_secs=self.session_config.conversation_timeout,
-            observers=[TranscriptObserver()],
+            observers=[TranscriptObserver()] + (extra_observers or []),
         )
+
+        @task.event_handler("on_pipeline_error")
+        async def on_pipeline_error(task, frame):
+            if frame.exception:
+                logger.opt(exception=frame.exception).error("Pipeline error: {}", frame.error)
+            else:
+                logger.error("Pipeline error: {}", frame.error)
 
         @user_aggregator.event_handler("on_user_turn_stopped")
         async def on_user_turn_stopped(aggregator, strategy, message: UserTurnStoppedMessage):
@@ -181,6 +192,7 @@ class ConversationSession:
                 if self._consecutive_echo_turns >= (echo_config.consecutive_limit or 5):
                     logger.warning("🔁 Echo loop detected after {} turns", self._consecutive_echo_turns)
                     self.is_terminating = True
+                    self._termination_reason = "echo-loop"
             else:
                 self._consecutive_echo_turns = 0
 
@@ -189,6 +201,7 @@ class ConversationSession:
             ):
                 logger.info("💤 Sleep word detected: '{}'", message.content)
                 self.is_terminating = True
+                self._termination_reason = "sleep-word"
 
         @assistant_aggregator.event_handler("on_assistant_turn_stopped")
         async def on_assistant_turn_stopped(aggregator, message: AssistantTurnStoppedMessage):
@@ -204,6 +217,8 @@ class ConversationSession:
                 return
 
             if self.is_terminating:
+                if self._on_session_ending:
+                    await self._on_session_ending(self._termination_reason or "sleep-word")
                 await task.queue_frames([EndFrame()])
 
         await task.queue_frames([LLMRunFrame()])
@@ -211,8 +226,8 @@ class ConversationSession:
         try:
             runner = PipelineRunner(handle_sigint=False)
             await runner.run(task)
-        except Exception as e:
-            logger.error("⚠️  Error during conversation: {}", e)
+        except Exception:
+            logger.exception("⚠️  Error during conversation")
 
     # --- Memory ---
 

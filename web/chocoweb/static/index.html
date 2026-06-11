@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Choco</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div id="app">
+    <div id="character-wrap">
+      <div id="character" class="state-sleeping"></div>
+    </div>
+
+    <div id="setup-panel" class="panel">
+      <div class="picker-row">
+        <label for="profile-select">Profile</label>
+        <select id="profile-select"></select>
+      </div>
+      <div class="picker-row">
+        <label for="language-select">Language</label>
+        <select id="language-select"></select>
+      </div>
+      <button id="start-btn" disabled>Start Session</button>
+      <p id="error-msg" class="error hidden"></p>
+    </div>
+
+    <div id="session-panel" class="panel hidden">
+      <div id="status-bar">
+        <span id="status-label">Listening...</span>
+        <button id="end-btn">End Session</button>
+      </div>
+      <div id="transcript"></div>
+    </div>
+  </div>
+
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>

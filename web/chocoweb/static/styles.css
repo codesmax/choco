@@ -1,0 +1,205 @@
+/* ── Reset & base ─────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:         #141414;
+  --panel-bg:   #0A2647;
+  --trans-bg:   #144272;
+  --accent:     #33BDC4;
+  --text:       #33BDC4;
+  --text-active:#FFFFFF;
+  --radius:     10px;
+  --gap:        16px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+  min-height: 100svh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px 16px;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gap);
+  width: 100%;
+  max-width: 480px;
+}
+
+/* ── Character sprite ─────────────────────────────────────────────────── */
+#character-wrap {
+  width: 400px;
+  height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel-bg);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+#character {
+  background-repeat: no-repeat;
+  background-position: 0 0;
+  image-rendering: pixelated;
+}
+
+/* Idle: single frame 400×480 — scale to fit height */
+#character.state-idle {
+  width: 167px;
+  height: 200px;
+  background-image: url('/images/choco-idle.png');
+  background-size: 167px 200px;
+  animation: none;
+}
+
+/* Speaking: 4 frames × 400px = 1600px wide strip, 480px tall
+   Displayed at 167×200 (scale 0.417), strip = 667×200 */
+#character.state-speaking {
+  width: 167px;
+  height: 200px;
+  background-image: url('/images/choco-speaking.png');
+  background-size: 667px 200px;
+  animation: choco-speak 0.5s steps(4) infinite;
+}
+
+@keyframes choco-speak {
+  to { background-position: -667px 0; }
+}
+
+/* Sleeping: 4 frames × 800px = 3200px wide strip, 480px tall
+   Display each frame at 167×100 (scale 0.208 height, 167/800 width)
+   strip = 667×100 */
+#character.state-sleeping {
+  width: 167px;
+  height: 100px;
+  background-image: url('/images/choco-sleeping.png');
+  background-size: 667px 100px;
+  animation: choco-sleep 4s steps(4) infinite;
+}
+
+@keyframes choco-sleep {
+  to { background-position: -667px 0; }
+}
+
+/* ── Panels ───────────────────────────────────────────────────────────── */
+.panel {
+  width: 100%;
+  background: var(--panel-bg);
+  border-radius: var(--radius);
+  padding: var(--gap);
+}
+
+.panel.hidden { display: none; }
+
+/* ── Setup panel ──────────────────────────────────────────────────────── */
+.picker-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.picker-row label {
+  min-width: 72px;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+select {
+  flex: 1;
+  background: var(--trans-bg);
+  color: var(--text-active);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+select:focus { outline: 2px solid var(--accent); }
+
+button {
+  width: 100%;
+  padding: 12px;
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+  border-radius: var(--radius);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+button:not(:disabled):hover { opacity: 0.85; }
+
+.error {
+  margin-top: 10px;
+  color: #ff6b6b;
+  font-size: 0.85rem;
+  text-align: center;
+}
+.error.hidden { display: none; }
+
+/* ── Session panel ────────────────────────────────────────────────────── */
+#status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--gap);
+}
+
+#status-label {
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+#end-btn {
+  width: auto;
+  padding: 8px 18px;
+  font-size: 0.85rem;
+  background: transparent;
+  color: #ff6b6b;
+  border: 1px solid #ff6b6b;
+  border-radius: 6px;
+}
+
+#end-btn:hover { background: rgba(255, 107, 107, 0.1); }
+
+/* ── Transcript ───────────────────────────────────────────────────────── */
+#transcript {
+  background: var(--trans-bg);
+  border-radius: 6px;
+  padding: 12px;
+  min-height: 160px;
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.transcript-entry {
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.transcript-entry.user { color: var(--text); }
+.transcript-entry.user::before { content: "You: "; font-weight: 600; }
+
+.transcript-entry.choco { color: var(--text-active); }
+.transcript-entry.choco::before { content: "Choco: "; font-weight: 600; }
+
+.transcript-entry.system {
+  color: #888;
+  font-style: italic;
+  font-size: 0.8rem;
+}
