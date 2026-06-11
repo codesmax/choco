@@ -9,7 +9,7 @@ This repo contains two products that share a common core:
 | Product | Description | Target |
 |---|---|---|
 | **chocopi** | Always-on kiosk app with on-device wake word detection | Raspberry Pi (dedicated device) |
-| **chocoweb** *(planned)* | Browser-accessible server app with WebRTC audio | Any host, accessed from any browser |
+| **chocoweb** | Browser-accessible server app with WebRTC audio | Any host, accessed from any browser |
 
 Both apps consume **chococore** — the platform-agnostic package that handles conversation logic, LLM providers, session memory, and prompts.
 
@@ -215,9 +215,9 @@ choco/                          # uv workspace root
 
 ## Roadmap
 
-- [ ] chocoweb — browser-accessible sibling app (WebRTC, FastAPI, no dedicated hardware required)
+- [ ] chocoweb UI improvements
+- [ ] Support remote deployment of chocoweb (authentication, NAT traversal)
 - [ ] Support tool calling for image display during instruction
-- [ ] Expanded language + wake word support
 
 ## Contributing
 
