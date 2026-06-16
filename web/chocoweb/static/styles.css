@@ -2,177 +2,107 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:         #141414;
-  --panel-bg:   #0A2647;
-  --trans-bg:   #144272;
-  --accent:     #33BDC4;
-  --text:       #33BDC4;
-  --text-active:#FFFFFF;
-  --radius:     10px;
-  --gap:        16px;
+  --bg:          #141414;
+  --panel-bg:    #0A2647;
+  --trans-bg:    #144272;
+  --accent:      #33BDC4;
+  --text:        #33BDC4;
+  --text-active: #FFFFFF;
 }
 
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: system-ui, sans-serif;
-  min-height: 100svh;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 24px 16px;
-}
+/* hidden wins regardless of Tailwind display utilities */
+.hidden { display: none !important; }
 
-#app {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--gap);
-  width: 100%;
-  max-width: 480px;
-}
+/* panels are flex columns when visible */
+.choco-panel { display: flex; flex-direction: column; }
 
 /* ── Character sprite ─────────────────────────────────────────────────── */
-#character-wrap {
-  width: 400px;
-  height: 240px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--panel-bg);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
 #character {
   background-repeat: no-repeat;
-  background-position: 0 0;
   image-rendering: pixelated;
+  /* Constant size across all states — no layout jump on transition */
+  width: 200px;
+  height: 240px;
 }
 
-/* Idle: single frame 400×480 — scale to fit height */
+/* Idle: 400×480 source → 200×240 at scale 0.5 */
 #character.state-idle {
-  width: 167px;
-  height: 200px;
   background-image: url('/images/choco-idle.png');
-  background-size: 167px 200px;
+  background-size: 200px 240px;
+  background-position: 0 0;
   animation: none;
 }
 
-/* Speaking: 4 frames × 400px = 1600px wide strip, 480px tall
-   Displayed at 167×200 (scale 0.417), strip = 667×200 */
+/* Speaking: 4 frames × 400px = 1600×480 strip → 800×240 at scale 0.5 */
 #character.state-speaking {
-  width: 167px;
-  height: 200px;
   background-image: url('/images/choco-speaking.png');
-  background-size: 667px 200px;
+  background-size: 800px 240px;
+  background-position: 0 0;
   animation: choco-speak 0.5s steps(4) infinite;
 }
 
 @keyframes choco-speak {
-  to { background-position: -667px 0; }
+  to { background-position: -800px 0; }
 }
 
-/* Sleeping: 4 frames × 800px = 3200px wide strip, 480px tall
-   Display each frame at 167×100 (scale 0.208 height, 167/800 width)
-   strip = 667×100 */
+/* Sleeping: 4 frames × 800px = 3200×480 strip → 800×120 at scale 0.25
+   Character is smaller (lying down), centered vertically in the 240px frame:
+   y-offset = (240 - 120) / 2 = 60px */
 #character.state-sleeping {
-  width: 167px;
-  height: 100px;
   background-image: url('/images/choco-sleeping.png');
-  background-size: 667px 100px;
+  background-size: 800px 120px;
+  background-position: 0 60px;
   animation: choco-sleep 4s steps(4) infinite;
 }
 
 @keyframes choco-sleep {
-  to { background-position: -667px 0; }
+  from { background-position:    0 60px; }
+  to   { background-position: -800px 60px; }
 }
 
-/* ── Panels ───────────────────────────────────────────────────────────── */
-.panel {
-  width: 100%;
-  background: var(--panel-bg);
-  border-radius: var(--radius);
-  padding: var(--gap);
-}
-
-.panel.hidden { display: none; }
-
-/* ── Setup panel ──────────────────────────────────────────────────────── */
-.picker-row {
+/* ── Profile / language pickers ───────────────────────────────────────── */
+.picker-btn {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.picker-row label {
-  min-width: 72px;
-  font-size: 0.9rem;
-  color: var(--text);
-}
-
-select {
-  flex: 1;
+  border-radius: 10px;
+  border: 2px solid transparent;
   background: var(--trans-bg);
-  color: var(--text-active);
-  border: 1px solid var(--accent);
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 0.9rem;
+  color: var(--text);
   cursor: pointer;
-}
-
-select:focus { outline: 2px solid var(--accent); }
-
-button {
-  width: 100%;
-  padding: 12px;
-  background: var(--accent);
-  color: var(--bg);
-  border: none;
-  border-radius: var(--radius);
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity 0.15s;
-}
-
-button:disabled { opacity: 0.4; cursor: not-allowed; }
-button:not(:disabled):hover { opacity: 0.85; }
-
-.error {
-  margin-top: 10px;
-  color: #ff6b6b;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
   font-size: 0.85rem;
+  font-family: inherit;
+}
+
+.picker-btn.selected {
+  border-color: var(--accent);
+  background: rgba(51, 189, 196, 0.15);
+  color: var(--text-active);
+}
+
+.picker-btn:hover:not(.selected) {
+  border-color: rgba(51, 189, 196, 0.3);
+}
+
+/* profile cards: stacked icon + label */
+.profile-btn {
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px;
+  min-width: 80px;
+  justify-content: center;
   text-align: center;
 }
-.error.hidden { display: none; }
 
-/* ── Session panel ────────────────────────────────────────────────────── */
-#status-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--gap);
+/* language pills: flag + label side by side */
+.lang-btn {
+  flex-direction: row;
+  gap: 8px;
+  padding: 9px 14px;
 }
 
-#status-label {
-  font-size: 0.9rem;
-  color: var(--text);
-}
-
-#end-btn {
-  width: auto;
-  padding: 8px 18px;
-  font-size: 0.85rem;
-  background: transparent;
-  color: #ff6b6b;
-  border: 1px solid #ff6b6b;
-  border-radius: 6px;
-}
-
-#end-btn:hover { background: rgba(255, 107, 107, 0.1); }
+.picker-icon { font-size: 1.5rem; line-height: 1; }
+.picker-flag { font-size: 1.25rem; line-height: 1; }
 
 /* ── Transcript ───────────────────────────────────────────────────────── */
 #transcript {
@@ -192,14 +122,20 @@ button:not(:disabled):hover { opacity: 0.85; }
   line-height: 1.5;
 }
 
-.transcript-entry.user { color: var(--text); }
-.transcript-entry.user::before { content: "You: "; font-weight: 600; }
-
-.transcript-entry.choco { color: var(--text-active); }
+.transcript-entry.user          { color: var(--text); }
+.transcript-entry.user::before  { content: "You: "; font-weight: 600; }
+.transcript-entry.choco         { color: var(--text-active); }
 .transcript-entry.choco::before { content: "Choco: "; font-weight: 600; }
-
 .transcript-entry.system {
   color: #888;
   font-style: italic;
   font-size: 0.8rem;
 }
+
+/* ── Transcript chunk animation ───────────────────────────────────────── */
+@keyframes chunk-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.word-chunk { animation: chunk-in 0.15s ease-out both; }

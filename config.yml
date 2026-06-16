@@ -1,15 +1,23 @@
 # Active profile to use for sessions
 profile: "default"
 profiles:
-  default:
-    name: "Default"
-    user_age: 7
+  older_child:
+    name: "Older Child"
+    user_age: 8
     native_language: "en"
     learning_languages:
       ko:
-        comprehension_age: 2
+        comprehension_age: 4
         translations: true
       es:
+        comprehension_age: 2
+        translations: true
+  younger_child:
+    name: "Younger Child"
+    user_age: 6
+    native_language: "en"
+    learning_languages:
+      ko:
         comprehension_age: 2
         translations: true
       zh:

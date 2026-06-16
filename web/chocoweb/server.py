@@ -18,7 +18,7 @@ from pipecat.transports.smallwebrtc.request_handler import (
 from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
 
 from chococore.config import CONFIG, IMAGES_PATH, SOUNDS_PATH
-from chocoweb.pipeline import run_pipeline
+from chocoweb.session import run_session
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -76,7 +76,7 @@ async def offer(request: Request):
             conn,
             params=TransportParams(audio_in_enabled=True, audio_out_enabled=True),
         )
-        asyncio.create_task(run_pipeline(transport, profile_name, language))
+        asyncio.create_task(run_session(transport, profile_name, language))
 
     return await _handler.handle_web_request(sdp_request, on_connection)
 

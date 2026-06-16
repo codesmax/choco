@@ -1,4 +1,4 @@
-"""Build and run the Pipecat pipeline for a single chocoweb WebRTC session."""
+"""Run a single chocoweb WebRTC conversation session."""
 from loguru import logger
 
 from pipecat.processors.frameworks.rtvi.processor import RTVIProcessor
@@ -8,7 +8,7 @@ from chococore.config import CONFIG
 from chococore.conversation import ConversationSession
 
 
-async def run_pipeline(transport: SmallWebRTCTransport, profile_name: str, language: str | None):
+async def run_session(transport: SmallWebRTCTransport, profile_name: str, language: str | None):
     profile_config = CONFIG.profiles.get(profile_name)
     if profile_config is None:
         default = CONFIG.profile or "default"

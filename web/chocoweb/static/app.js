@@ -3,35 +3,44 @@
 import { PipecatClient } from 'https://esm.sh/@pipecat-ai/client-js@1.9.1';
 import { SmallWebRTCTransport } from 'https://esm.sh/@pipecat-ai/small-webrtc-transport@1.10.2';
 
-// ── DOM refs ────────────────────────────────────────────────────────────
+// ── DOM refs ─────────────────────────────────────────────────────────────
 const character = document.getElementById('character');
 const setupPanel = document.getElementById('setup-panel');
 const sessionPanel = document.getElementById('session-panel');
-const profileSel = document.getElementById('profile-select');
-const languageSel = document.getElementById('language-select');
+const profilePicker = document.getElementById('profile-picker');
+const languagePicker = document.getElementById('language-picker');
 const startBtn = document.getElementById('start-btn');
 const endBtn = document.getElementById('end-btn');
 const statusLabel = document.getElementById('status-label');
 const transcript = document.getElementById('transcript');
 const errorMsg = document.getElementById('error-msg');
 
-// ── State ────────────────────────────────────────────────────────────────
+// ── Language → flag emoji ─────────────────────────────────────────────────
+const LANG_FLAGS = {
+  en: '🇺🇸', ko: '🇰🇷', es: '🇲🇽', zh: '🇨🇳',
+  ja: '🇯🇵', fr: '🇫🇷', de: '🇩🇪', pt: '🇧🇷',
+  it: '🇮🇹', ru: '🇷🇺', ar: '🇸🇦', hi: '🇮🇳',
+};
+
+// ── State ─────────────────────────────────────────────────────────────────
 let client = null;
 let profiles = [];
-let currentBotEntry = null;  // accumulates bot text during a turn
+let selectedProfile = null;
+let selectedLanguage = null;
+let currentBotEntry = null;
 let currentBotText = '';
 
-// ── Character state ──────────────────────────────────────────────────────
+// ── Character state ───────────────────────────────────────────────────────
 function setCharacterState(state) {
   character.className = `state-${state}`;
 }
 
-// ── Status ───────────────────────────────────────────────────────────────
+// ── Status ────────────────────────────────────────────────────────────────
 function setStatus(text) {
   statusLabel.textContent = text;
 }
 
-// ── Transcript helpers ───────────────────────────────────────────────────
+// ── Transcript helpers ────────────────────────────────────────────────────
 function addTranscript(role, text) {
   if (!text?.trim()) return;
   const el = document.createElement('div');
@@ -49,7 +58,7 @@ function addSystemMsg(text) {
   transcript.scrollTop = transcript.scrollHeight;
 }
 
-// ── Sent sound (client-side, on user-stopped-speaking) ───────────────────
+// ── Sent sound (client-side, on user-stopped-speaking) ────────────────────
 let _sentAudio = null;
 async function playSentSound() {
   if (!_sentAudio) {
@@ -62,7 +71,7 @@ async function playSentSound() {
   } catch (_) { /* ignore — first-interaction autoplay block */ }
 }
 
-// ── Error display ────────────────────────────────────────────────────────
+// ── Error display ─────────────────────────────────────────────────────────
 function showError(msg) {
   errorMsg.textContent = msg;
   errorMsg.classList.remove('hidden');
@@ -72,55 +81,75 @@ function clearError() {
   errorMsg.classList.add('hidden');
 }
 
-// ── Profile loading ──────────────────────────────────────────────────────
+// ── Profile picker ────────────────────────────────────────────────────────
 async function loadProfiles() {
   try {
     const res = await fetch('/api/profiles');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     profiles = await res.json();
-    populateProfilePicker();
+    buildProfilePicker();
   } catch (err) {
     showError(`Failed to load profiles: ${err.message}`);
   }
 }
 
-function populateProfilePicker() {
-  profileSel.innerHTML = '';
+function buildProfilePicker() {
+  profilePicker.innerHTML = '';
   for (const p of profiles) {
-    const opt = document.createElement('option');
-    opt.value = p.key;
-    opt.textContent = p.name;
-    profileSel.appendChild(opt);
+    const btn = document.createElement('button');
+    btn.className = 'picker-btn profile-btn';
+    btn.dataset.value = p.key;
+    btn.innerHTML = `<span class="picker-icon">👤</span><span>${p.name}</span>`;
+    btn.addEventListener('click', () => selectProfile(p.key));
+    profilePicker.appendChild(btn);
   }
-  populateLanguagePicker();
+  if (profiles.length > 0) selectProfile(profiles[0].key);
   startBtn.disabled = profiles.length === 0;
 }
 
-function populateLanguagePicker() {
-  languageSel.innerHTML = '';
-  const profile = profiles.find(p => p.key === profileSel.value);
-  if (!profile) return;
-  for (const [code, name] of Object.entries(profile.learning_languages)) {
-    const opt = document.createElement('option');
-    opt.value = code;
-    opt.textContent = name;
-    languageSel.appendChild(opt);
-  }
+function selectProfile(key) {
+  selectedProfile = key;
+  profilePicker.querySelectorAll('.picker-btn').forEach(b =>
+    b.classList.toggle('selected', b.dataset.value === key)
+  );
+  buildLanguagePicker(profiles.find(p => p.key === key));
 }
 
-profileSel.addEventListener('change', populateLanguagePicker);
+// ── Language picker ───────────────────────────────────────────────────────
+function buildLanguagePicker(profile) {
+  languagePicker.innerHTML = '';
+  if (!profile) return;
+  const entries = Object.entries(profile.learning_languages || {});
+  for (const [code, name] of entries) {
+    const btn = document.createElement('button');
+    btn.className = 'picker-btn lang-btn';
+    btn.dataset.value = code;
+    const flag = LANG_FLAGS[code] ?? '🌐';
+    btn.innerHTML = `<span class="picker-flag">${flag}</span><span>${name}</span>`;
+    btn.addEventListener('click', () => selectLanguage(code));
+    languagePicker.appendChild(btn);
+  }
+  if (entries.length > 0) selectLanguage(entries[0][0]);
+}
 
-// ── Session lifecycle ────────────────────────────────────────────────────
+function selectLanguage(code) {
+  selectedLanguage = code;
+  languagePicker.querySelectorAll('.picker-btn').forEach(b =>
+    b.classList.toggle('selected', b.dataset.value === code)
+  );
+}
+
+// ── Session lifecycle ─────────────────────────────────────────────────────
 async function startSession() {
   clearError();
   startBtn.disabled = true;
 
-  const profileKey = profileSel.value;
-  const langCode = languageSel.value;
-
   client = new PipecatClient({
     transport: new SmallWebRTCTransport({
-      webrtcRequestParams: { endpoint: '/api/offer', requestData: { profile: profileKey, language: langCode } },
+      webrtcRequestParams: {
+        endpoint: '/api/offer',
+        requestData: { profile: selectedProfile, language: selectedLanguage },
+      },
     }),
     enableMic: true,
     enableCam: false,
@@ -129,6 +158,8 @@ async function startSession() {
         setupPanel.classList.add('hidden');
         sessionPanel.classList.remove('hidden');
         transcript.innerHTML = '';
+        currentBotEntry = null;
+        currentBotText = '';
         setStatus('Connecting...');
       },
       onBotReady: () => {
@@ -157,33 +188,37 @@ async function startSession() {
         audio.srcObject = new MediaStream([track]);
       },
       onBotStartedSpeaking: () => {
-        currentBotText = '';
-        currentBotEntry = document.createElement('div');
-        currentBotEntry.className = 'transcript-entry choco';
-        transcript.appendChild(currentBotEntry);
+        if (!currentBotEntry) {
+          currentBotEntry = document.createElement('div');
+          currentBotEntry.className = 'transcript-entry choco';
+          transcript.appendChild(currentBotEntry);
+        }
         setCharacterState('speaking');
         setStatus('Choco is speaking...');
       },
       onBotStoppedSpeaking: () => {
-        currentBotEntry = null;
-        currentBotText = '';
+        // Don't clear currentBotEntry — the bot may resume after a brief pause.
+        // The entry is closed when the user actually speaks (onUserTranscript final).
         setCharacterState('idle');
         setStatus('Listening...');
       },
       onUserTranscript: (data) => {
-        if (data.final) addTranscript('user', data.text);
+        if (data.final) {
+          addTranscript('user', data.text);
+          currentBotEntry = null;
+          currentBotText = '';
+        }
       },
       onBotOutput: (data) => {
-        if (!data.spoken || !data.text?.trim()) return;
-        const chunk = data.text.replaceAll('\n', ' ');
-        currentBotText = currentBotText
-          ? currentBotText + chunk
-          : chunk;
-        if (currentBotEntry) {
-          currentBotEntry.textContent = currentBotText;
-        } else {
-          addTranscript('choco', currentBotText);
-        }
+        if (!data.spoken || !data.text?.trim() || !currentBotEntry) return;
+        console.log(`Bot output chunk: "${data.text}"`);
+        let chunk = data.text.replaceAll('\n', ' ');
+        if (/[?!]$/.test(currentBotText) && !/^\s/.test(chunk)) chunk = ' ' + chunk;
+        const span = document.createElement('span');
+        span.className = 'word-chunk';
+        span.textContent = chunk;
+        currentBotEntry.appendChild(span);
+        currentBotText += chunk;
         transcript.scrollTop = transcript.scrollHeight;
       },
       onServerMessage: (msg) => {
@@ -241,9 +276,9 @@ function onSessionEnded() {
   }, 2000);
 }
 
-// ── Event listeners ──────────────────────────────────────────────────────
+// ── Event listeners ───────────────────────────────────────────────────────
 startBtn.addEventListener('click', startSession);
 endBtn.addEventListener('click', endSession);
 
-// ── Boot ─────────────────────────────────────────────────────────────────
+// ── Boot ──────────────────────────────────────────────────────────────────
 loadProfiles();

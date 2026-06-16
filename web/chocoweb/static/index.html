@@ -4,36 +4,69 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Choco</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'choco-bg':    '#141414',
+            'choco-panel': '#0A2647',
+            'choco-trans': '#144272',
+            'choco-accent':'#33BDC4',
+          }
+        }
+      }
+    }
+  </script>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
-<body>
-  <div id="app">
-    <div id="character-wrap">
+<body class="bg-choco-bg text-choco-accent min-h-svh flex items-start justify-center px-4 py-6 font-sans">
+  <div id="app" class="flex flex-col items-center gap-4 w-full max-w-md">
+
+    <!-- Character -->
+    <div id="character-wrap" class="w-full h-60 flex items-center justify-center bg-choco-panel rounded-xl overflow-hidden">
       <div id="character" class="state-sleeping"></div>
     </div>
 
-    <div id="setup-panel" class="panel">
-      <div class="picker-row">
-        <label for="profile-select">Profile</label>
-        <select id="profile-select"></select>
+    <!-- Setup panel -->
+    <div id="setup-panel" class="choco-panel w-full bg-choco-panel rounded-xl p-4 gap-4">
+
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-widest mb-3 opacity-60">Profile</p>
+        <div id="profile-picker" class="flex flex-wrap gap-2"></div>
       </div>
-      <div class="picker-row">
-        <label for="language-select">Language</label>
-        <select id="language-select"></select>
+
+      <div class="border-t border-white/10"></div>
+
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-widest mb-3 opacity-60">Language</p>
+        <div id="language-picker" class="flex flex-wrap gap-2"></div>
       </div>
-      <button id="start-btn" disabled>Start Session</button>
-      <p id="error-msg" class="error hidden"></p>
+
+      <button id="start-btn" disabled
+        class="w-full py-3 bg-choco-accent text-choco-bg font-semibold rounded-xl text-base
+               cursor-pointer transition-opacity disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-85">
+        Start Session
+      </button>
+
+      <p id="error-msg" class="text-red-400 text-sm text-center hidden"></p>
     </div>
 
-    <div id="session-panel" class="panel hidden">
-      <div id="status-bar">
-        <span id="status-label">Listening...</span>
-        <button id="end-btn">End Session</button>
+    <!-- Session panel -->
+    <div id="session-panel" class="choco-panel hidden w-full bg-choco-panel rounded-xl p-4 gap-4">
+      <div class="flex items-center justify-between">
+        <span id="status-label" class="text-sm">Listening...</span>
+        <button id="end-btn"
+          class="px-4 py-1.5 text-sm text-red-400 border border-red-400 rounded-lg
+                 bg-transparent hover:bg-red-400/10 transition-colors cursor-pointer">
+          End Session
+        </button>
       </div>
       <div id="transcript"></div>
     </div>
-  </div>
 
+  </div>
   <script type="module" src="/static/app.js"></script>
 </body>
 </html>
