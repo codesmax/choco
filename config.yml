@@ -2,7 +2,7 @@
 profile: "default"
 profiles:
   older_child:
-    name: "Older Child"
+    name: "User 1"
     user_age: 8
     native_language: "en"
     learning_languages:
@@ -13,7 +13,7 @@ profiles:
         comprehension_age: 2
         translations: true
   younger_child:
-    name: "Younger Child"
+    name: "User 2"
     user_age: 6
     native_language: "en"
     learning_languages:

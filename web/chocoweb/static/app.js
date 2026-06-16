@@ -4,16 +4,19 @@ import { PipecatClient } from 'https://esm.sh/@pipecat-ai/client-js@1.9.1';
 import { SmallWebRTCTransport } from 'https://esm.sh/@pipecat-ai/small-webrtc-transport@1.10.2';
 
 // ── DOM refs ─────────────────────────────────────────────────────────────
-const character = document.getElementById('character');
-const setupPanel = document.getElementById('setup-panel');
+const character    = document.getElementById('character');
+const charRing     = document.getElementById('char-ring');
+const sessionBar   = document.getElementById('session-bar');
+const chocoTitle   = document.getElementById('choco-title');
+const setupPanel   = document.getElementById('setup-panel');
 const sessionPanel = document.getElementById('session-panel');
-const profilePicker = document.getElementById('profile-picker');
+const profilePicker  = document.getElementById('profile-picker');
 const languagePicker = document.getElementById('language-picker');
-const startBtn = document.getElementById('start-btn');
-const endBtn = document.getElementById('end-btn');
+const startBtn    = document.getElementById('start-btn');
+const endBtn      = document.getElementById('end-btn');
 const statusLabel = document.getElementById('status-label');
-const transcript = document.getElementById('transcript');
-const errorMsg = document.getElementById('error-msg');
+const transcript  = document.getElementById('transcript');
+const errorMsg    = document.getElementById('error-msg');
 
 // ── Language → flag emoji ─────────────────────────────────────────────────
 const LANG_FLAGS = {
@@ -33,6 +36,9 @@ let currentBotText = '';
 // ── Character state ───────────────────────────────────────────────────────
 function setCharacterState(state) {
   character.className = `state-${state}`;
+  charRing.className = state === 'speaking' ? 'ring-speaking'
+                     : state === 'idle'     ? 'ring-idle'
+                     : '';
 }
 
 // ── Status ────────────────────────────────────────────────────────────────
@@ -58,17 +64,23 @@ function addSystemMsg(text) {
   transcript.scrollTop = transcript.scrollHeight;
 }
 
-// ── Sent sound (client-side, on user-stopped-speaking) ────────────────────
-let _sentAudio = null;
-async function playSentSound() {
-  if (!_sentAudio) {
-    _sentAudio = new Audio('/sounds/sent.wav');
-    _sentAudio.volume = 0.5;
-  }
-  try {
-    _sentAudio.currentTime = 0;
-    await _sentAudio.play();
-  } catch (_) { /* ignore — first-interaction autoplay block */ }
+// Inserts a media preview card below the most recent bot bubble.
+// imgSrc is optional; omit for placeholder. Wired to server 'preview' messages.
+function addPreviewCard(title, caption, imgSrc) {
+  const card = document.createElement('div');
+  card.className = 'preview-card';
+  const imgEl = imgSrc
+    ? `<img class="preview-img" src="${imgSrc}" alt="${title}">`
+    : `<div class="preview-img">IMAGE</div>`;
+  card.innerHTML = `
+    ${imgEl}
+    <div class="preview-body">
+      <div class="preview-title">${title}</div>
+      <div class="preview-caption">${caption}</div>
+    </div>
+  `;
+  transcript.appendChild(card);
+  transcript.scrollTop = transcript.scrollHeight;
 }
 
 // ── Error display ─────────────────────────────────────────────────────────
@@ -99,7 +111,11 @@ function buildProfilePicker() {
     const btn = document.createElement('button');
     btn.className = 'picker-btn profile-btn';
     btn.dataset.value = p.key;
-    btn.innerHTML = `<span class="picker-icon">👤</span><span>${p.name}</span>`;
+    const initial = p.name.charAt(0).toUpperCase();
+    btn.innerHTML = `
+      <span class="profile-initial">${initial}</span>
+      <span class="profile-name">${p.name}</span>
+    `;
     btn.addEventListener('click', () => selectProfile(p.key));
     profilePicker.appendChild(btn);
   }
@@ -122,10 +138,10 @@ function buildLanguagePicker(profile) {
   const entries = Object.entries(profile.learning_languages || {});
   for (const [code, name] of entries) {
     const btn = document.createElement('button');
-    btn.className = 'picker-btn lang-btn';
+    btn.className = 'lang-seg-btn';
     btn.dataset.value = code;
     const flag = LANG_FLAGS[code] ?? '🌐';
-    btn.innerHTML = `<span class="picker-flag">${flag}</span><span>${name}</span>`;
+    btn.innerHTML = `<span class="lang-flag">${flag}</span><span>${name}</span>`;
     btn.addEventListener('click', () => selectLanguage(code));
     languagePicker.appendChild(btn);
   }
@@ -134,7 +150,7 @@ function buildLanguagePicker(profile) {
 
 function selectLanguage(code) {
   selectedLanguage = code;
-  languagePicker.querySelectorAll('.picker-btn').forEach(b =>
+  languagePicker.querySelectorAll('.lang-seg-btn').forEach(b =>
     b.classList.toggle('selected', b.dataset.value === code)
   );
 }
@@ -156,7 +172,9 @@ async function startSession() {
     callbacks: {
       onConnected: () => {
         setupPanel.classList.add('hidden');
+        chocoTitle.classList.add('hidden');
         sessionPanel.classList.remove('hidden');
+        sessionBar.classList.remove('hidden');
         transcript.innerHTML = '';
         currentBotEntry = null;
         currentBotText = '';
@@ -173,7 +191,6 @@ async function startSession() {
         setStatus('Speaking...');
       },
       onUserStoppedSpeaking: () => {
-        playSentSound();
         setStatus('Listening...');
       },
       onTrackStarted: (track) => {
@@ -211,7 +228,6 @@ async function startSession() {
       },
       onBotOutput: (data) => {
         if (!data.spoken || !data.text?.trim() || !currentBotEntry) return;
-        console.log(`Bot output chunk: "${data.text}"`);
         let chunk = data.text.replaceAll('\n', ' ');
         if (/[?!]$/.test(currentBotText) && !/^\s/.test(chunk)) chunk = ' ' + chunk;
         const span = document.createElement('span');
@@ -225,14 +241,17 @@ async function startSession() {
         if (msg?.t === 'session-ending') {
           const reason = msg.d?.reason;
           const labels = {
-            'sleep-word': 'Choco is going to sleep. Goodbye!',
-            'echo-loop': 'Echo detected — ending session.',
+            'sleep-word':   'Choco is going to sleep. Goodbye!',
+            'echo-loop':    'Echo detected — ending session.',
             'idle-timeout': 'Session timed out.',
-            'user-ended': 'Session ended.',
+            'user-ended':   'Session ended.',
           };
           addSystemMsg(labels[reason] ?? 'Session ending...');
           setCharacterState('sleeping');
           setStatus('Goodbye!');
+        }
+        if (msg?.t === 'preview') {
+          addPreviewCard(msg.d?.title ?? '', msg.d?.caption ?? '', msg.d?.img);
         }
       },
       onError: (err) => {
@@ -269,7 +288,9 @@ function onSessionEnded() {
   setCharacterState('sleeping');
   setTimeout(() => {
     sessionPanel.classList.add('hidden');
+    sessionBar.classList.add('hidden');
     setupPanel.classList.remove('hidden');
+    chocoTitle.classList.remove('hidden');
     startBtn.disabled = false;
     endBtn.disabled = false;
     // character stays sleeping on the setup screen

@@ -1,28 +1,66 @@
 /* ── Reset & base ─────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Constrain viewport so transcript scrolls instead of the page */
+html { height: 100svh; }
+body { height: 100svh; overflow: hidden; }
+
 :root {
-  --bg:          #141414;
-  --panel-bg:    #0A2647;
-  --trans-bg:    #144272;
-  --accent:      #33BDC4;
-  --text:        #33BDC4;
-  --text-active: #FFFFFF;
+  --panel:     #0F1E35;
+  --surface:   #162B4A;
+  --accent:    #2D8CFF;
+  --glow:      #5BACFF;
+  --text:      #E8F1FF;
+  --muted:     #6B8CAE;
+  --active:    #00D4AA;
+  --end:       #FF4D6D;
+  --divider:   #1E3A5F;
+  --user-bub:  #1A3A6B;
+  --bot-bub:   #0F2A4D;
 }
 
-/* hidden wins regardless of Tailwind display utilities */
 .hidden { display: none !important; }
 
-/* panels are flex columns when visible */
-.choco-panel { display: flex; flex-direction: column; }
+/* ── Character area ────────────────────────────────────────────────────── */
+#character-wrap {
+  position: relative;
+  height: 260px;
+  background: radial-gradient(ellipse at center, #162B4A 0%, #0D0F14 72%);
+  border-radius: 20px;
+  overflow: visible;
+}
+
+/* Glow ring — sits around the sprite, pulses (box-shadow only) on speaking */
+#char-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 220px;
+  height: 256px;
+  border-radius: 22px;
+  border: 1.5px solid transparent;
+  pointer-events: none;
+  transition: border-color 0.4s, box-shadow 0.4s;
+  z-index: 1;
+}
+
+#char-ring.ring-idle {
+  border-color: transparent;
+}
+
+#char-ring.ring-speaking {
+  border-color: transparent;
+}
 
 /* ── Character sprite ─────────────────────────────────────────────────── */
 #character {
   background-repeat: no-repeat;
   image-rendering: pixelated;
-  /* Constant size across all states — no layout jump on transition */
   width: 200px;
   height: 240px;
+  position: relative;
+  z-index: 2;
 }
 
 /* Idle: 400×480 source → 200×240 at scale 0.5 */
@@ -33,21 +71,24 @@
   animation: none;
 }
 
-/* Speaking: 4 frames × 400px = 1600×480 strip → 800×240 at scale 0.5 */
+/* Speaking: 4 frames × 400px wide strip → 800×240 at scale 0.5 */
 #character.state-speaking {
   background-image: url('/images/choco-speaking.png');
   background-size: 800px 240px;
   background-position: 0 0;
-  animation: choco-speak 0.5s steps(4) infinite;
+  animation: choco-speak 0.5s steps(4) infinite, char-glow 1.4s ease-in-out infinite;
 }
 
 @keyframes choco-speak {
   to { background-position: -800px 0; }
 }
 
-/* Sleeping: 4 frames × 800px = 3200×480 strip → 800×120 at scale 0.25
-   Character is smaller (lying down), centered vertically in the 240px frame:
-   y-offset = (240 - 120) / 2 = 60px */
+@keyframes char-glow {
+  0%, 100% { filter: drop-shadow(0 0 12px rgba(45,140,255,0.50)); }
+  50%       { filter: drop-shadow(0 0 32px rgba(45,140,255,0.88)); }
+}
+
+/* Sleeping: 4 frames, smaller; centered vertically within the 240px frame */
 #character.state-sleeping {
   background-image: url('/images/choco-sleeping.png');
   background-size: 800px 120px;
@@ -60,76 +101,292 @@
   to   { background-position: -800px 60px; }
 }
 
-/* ── Profile / language pickers ───────────────────────────────────────── */
+/* ── Setup panel (glass card) ─────────────────────────────────────────── */
+.glass-card {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 22px;
+  background: rgba(6, 11, 22, 0.92);
+  border: 1px solid rgba(45, 140, 255, 0.22);
+  border-radius: 20px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.section-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+/* ── Profile cards ────────────────────────────────────────────────────── */
 .picker-btn {
   display: flex;
   align-items: center;
-  border-radius: 10px;
   border: 2px solid transparent;
-  background: var(--trans-bg);
-  color: var(--text);
+  background: var(--surface);
+  color: var(--muted);
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s, color 0.15s;
-  font-size: 0.85rem;
   font-family: inherit;
 }
 
 .picker-btn.selected {
   border-color: var(--accent);
-  background: rgba(51, 189, 196, 0.15);
-  color: var(--text-active);
+  background: rgba(45, 140, 255, 0.12);
 }
 
 .picker-btn:hover:not(.selected) {
-  border-color: rgba(51, 189, 196, 0.3);
+  border-color: rgba(45, 140, 255, 0.28);
 }
 
-/* profile cards: stacked icon + label */
+/* Rounded square — centered icon + name stacked */
 .profile-btn {
   flex-direction: column;
-  gap: 4px;
-  padding: 12px 16px;
-  min-width: 80px;
+  align-items: center;
   justify-content: center;
-  text-align: center;
+  gap: 6px;
+  width: 80px;
+  height: 80px;
+  border-radius: 18px;
+  padding: 0;
 }
 
-/* language pills: flag + label side by side */
-.lang-btn {
-  flex-direction: row;
-  gap: 8px;
-  padding: 9px 14px;
+.profile-initial {
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--muted);
+  transition: color 0.15s;
 }
 
-.picker-icon { font-size: 1.5rem; line-height: 1; }
-.picker-flag { font-size: 1.25rem; line-height: 1; }
+.profile-name {
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  transition: color 0.15s;
+}
 
-/* ── Transcript ───────────────────────────────────────────────────────── */
+.profile-btn.selected .profile-initial { color: var(--accent); }
+.profile-btn.selected .profile-name    { color: var(--text); }
+
+/* ── Language segmented control ───────────────────────────────────────── */
+#language-picker {
+  display: flex;
+  border-radius: 12px;
+  border: 1px solid var(--divider);
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.lang-seg-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 6px;
+  font-size: 0.82rem;
+  font-family: inherit;
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-right: 1px solid var(--divider);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.lang-seg-btn:last-child { border-right: none; }
+
+.lang-seg-btn.selected {
+  background: rgba(45, 140, 255, 0.2);
+  color: var(--text);
+}
+
+.lang-seg-btn:hover:not(.selected) {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.lang-flag { font-size: 1.1rem; line-height: 1; }
+
+/* ── Start button ─────────────────────────────────────────────────────── */
+.start-btn {
+  width: 100%;
+  padding: 13px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  font-size: 1rem;
+  font-family: inherit;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  box-shadow: 0 0 24px rgba(45, 140, 255, 0.3);
+  transition: opacity 0.15s, box-shadow 0.15s;
+}
+
+.start-btn:hover:not(:disabled) {
+  opacity: 0.92;
+  box-shadow: 0 0 36px rgba(45, 140, 255, 0.5);
+}
+
+.start-btn:disabled {
+  opacity: 0.38;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+/* ── Session panel — fills remaining height in #app ───────────────────── */
+#session-panel { flex: 1; min-height: 0; position: relative; }
+
+
+/* Gradient fade — transcript content dissolves into the character area above */
+#session-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 52px;
+  background: linear-gradient(to bottom, #0D0F14, transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ── Session status bar — full viewport width, pinned to top of screen ── */
+#session-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--divider);
+  flex-shrink: 0;
+}
+
+/* ── End button ───────────────────────────────────────────────────────── */
+.end-btn {
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  font-family: inherit;
+  color: var(--end);
+  background: transparent;
+  border: 1px solid rgba(255, 77, 109, 0.38);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.end-btn:hover { background: rgba(255, 77, 109, 0.1); }
+.end-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Transcript (chat bubbles) ────────────────────────────────────────── */
 #transcript {
-  background: var(--trans-bg);
-  border-radius: 6px;
-  padding: 12px;
-  min-height: 160px;
-  max-height: 320px;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;          /* allow flex child to shrink below content size */
+  overflow-y: auto;
+  padding: 56px 0 12px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--divider) transparent;
 }
 
 .transcript-entry {
+  max-width: 84%;
+  padding: 9px 13px;
   font-size: 0.875rem;
-  line-height: 1.5;
+  line-height: 1.55;
+  word-break: break-word;
 }
 
-.transcript-entry.user          { color: var(--text); }
-.transcript-entry.user::before  { content: "You: "; font-weight: 600; }
-.transcript-entry.choco         { color: var(--text-active); }
-.transcript-entry.choco::before { content: "Choco: "; font-weight: 600; }
+/* User: right-aligned, solid blue bubble */
+.transcript-entry.user {
+  align-self: flex-end;
+  background: var(--user-bub);
+  color: var(--text);
+  border-radius: 16px 16px 4px 16px;
+}
+
+/* Choco: left-aligned, dark with blue left border */
+.transcript-entry.choco {
+  align-self: flex-start;
+  background: var(--bot-bub);
+  border-left: 2px solid var(--accent);
+  color: var(--text);
+  border-radius: 4px 16px 16px 16px;
+}
+
+/* System: centered, no background */
 .transcript-entry.system {
-  color: #888;
+  align-self: center;
+  max-width: 100%;
+  padding: 3px 0;
+  background: none;
+  border-radius: 0;
+  color: var(--muted);
   font-style: italic;
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+/* ── Preview card (inline media, inserted after a bot bubble) ─────────── */
+.preview-card {
+  align-self: flex-start;
+  display: flex;
+  gap: 10px;
+  max-width: 84%;
+  background: var(--surface);
+  border: 1px solid var(--divider);
+  border-radius: 12px;
+  padding: 10px;
+  margin-top: 2px;
+}
+
+/* Placeholder box or actual <img> once media is wired */
+.preview-img {
+  width: 72px;
+  height: 56px;
+  flex-shrink: 0;
+  border-radius: 7px;
+  background: var(--panel);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  overflow: hidden;
+  object-fit: cover;
+}
+
+.preview-body { flex: 1; min-width: 0; }
+
+.preview-title {
   font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.preview-caption {
+  font-size: 0.75rem;
+  color: var(--muted);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 /* ── Transcript chunk animation ───────────────────────────────────────── */
