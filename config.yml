@@ -35,7 +35,7 @@ providers:
     noise_reduction: "far_field"  # "near_field" | "far_field" | null
     output_speed: 0.75
     vad:
-      local: true
+      local: false
       server:
         type: "semantic_vad"  # "semantic_vad" | "server_vad"
         semantic_vad:
@@ -55,7 +55,7 @@ providers:
         start_sensitivity: "START_SENSITIVITY_LOW"
         end_sensitivity: "END_SENSITIVITY_LOW"
         prefix_padding_ms: 300
-        silence_duration_ms: 800
+        silence_duration_ms: 1200
 
   ultravox:
     api_key_env: ULTRAVOX_API_KEY

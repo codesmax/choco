@@ -4,19 +4,19 @@ import { PipecatClient } from 'https://esm.sh/@pipecat-ai/client-js@1.9.1';
 import { SmallWebRTCTransport } from 'https://esm.sh/@pipecat-ai/small-webrtc-transport@1.10.2';
 
 // ── DOM refs ─────────────────────────────────────────────────────────────
-const character    = document.getElementById('character');
-const charRing     = document.getElementById('char-ring');
-const sessionBar   = document.getElementById('session-bar');
-const chocoTitle   = document.getElementById('choco-title');
-const setupPanel   = document.getElementById('setup-panel');
+const character = document.getElementById('character');
+const charRing = document.getElementById('char-ring');
+const sessionBar = document.getElementById('session-bar');
+const chocoTitle = document.getElementById('choco-title');
+const setupPanel = document.getElementById('setup-panel');
 const sessionPanel = document.getElementById('session-panel');
-const profilePicker  = document.getElementById('profile-picker');
+const profilePicker = document.getElementById('profile-picker');
 const languagePicker = document.getElementById('language-picker');
-const startBtn    = document.getElementById('start-btn');
-const endBtn      = document.getElementById('end-btn');
+const startBtn = document.getElementById('start-btn');
+const endBtn = document.getElementById('end-btn');
 const statusLabel = document.getElementById('status-label');
-const transcript  = document.getElementById('transcript');
-const errorMsg    = document.getElementById('error-msg');
+const transcript = document.getElementById('transcript');
+const errorMsg = document.getElementById('error-msg');
 
 // ── Language → flag emoji ─────────────────────────────────────────────────
 const LANG_FLAGS = {
@@ -30,15 +30,15 @@ let client = null;
 let profiles = [];
 let selectedProfile = null;
 let selectedLanguage = null;
-let currentBotEntry = null;
-let currentBotText = '';
+let botEntry = null;
+let userEntry = null;
 
 // ── Character state ───────────────────────────────────────────────────────
 function setCharacterState(state) {
   character.className = `state-${state}`;
   charRing.className = state === 'speaking' ? 'ring-speaking'
-                     : state === 'idle'     ? 'ring-idle'
-                     : '';
+    : state === 'idle' ? 'ring-idle'
+      : '';
 }
 
 // ── Status ────────────────────────────────────────────────────────────────
@@ -47,12 +47,19 @@ function setStatus(text) {
 }
 
 // ── Transcript helpers ────────────────────────────────────────────────────
-function addTranscript(role, text) {
-  if (!text?.trim()) return;
+function createEntry(cssClass) {
   const el = document.createElement('div');
-  el.className = `transcript-entry ${role}`;
-  el.textContent = text;
+  el.className = `transcript-entry ${cssClass}`;
   transcript.appendChild(el);
+  return el;
+}
+
+function appendChunk(el, chunk) {
+  if (/[?!]$/.test(el.textContent) && !/^\s/.test(chunk)) chunk = ' ' + chunk;
+  const span = document.createElement('span');
+  span.className = 'word-chunk';
+  span.textContent = chunk;
+  el.appendChild(span);
   transcript.scrollTop = transcript.scrollHeight;
 }
 
@@ -176,8 +183,8 @@ async function startSession() {
         sessionPanel.classList.remove('hidden');
         sessionBar.classList.remove('hidden');
         transcript.innerHTML = '';
-        currentBotEntry = null;
-        currentBotText = '';
+        botEntry = null;
+        userEntry = null;
         setStatus('Connecting...');
       },
       onBotReady: () => {
@@ -205,46 +212,40 @@ async function startSession() {
         audio.srcObject = new MediaStream([track]);
       },
       onBotStartedSpeaking: () => {
-        if (!currentBotEntry) {
-          currentBotEntry = document.createElement('div');
-          currentBotEntry.className = 'transcript-entry choco';
-          transcript.appendChild(currentBotEntry);
-        }
+        if (!botEntry) botEntry = createEntry('choco');
         setCharacterState('speaking');
         setStatus('Choco is speaking...');
       },
       onBotStoppedSpeaking: () => {
-        // Don't clear currentBotEntry — the bot may resume after a brief pause.
-        // The entry is closed when the user actually speaks (onUserTranscript final).
+        botEntry = null;
         setCharacterState('idle');
         setStatus('Listening...');
       },
       onUserTranscript: (data) => {
         if (data.final) {
-          addTranscript('user', data.text);
-          currentBotEntry = null;
-          currentBotText = '';
+          if (!userEntry && data.text?.trim()) {
+            userEntry = createEntry('user');
+            appendChunk(userEntry, data.text);
+          }
+          userEntry = null;
+        } else if (data.text?.trim()) {
+          if (!userEntry) userEntry = createEntry('user');
+          appendChunk(userEntry, data.text);
         }
       },
       onBotOutput: (data) => {
-        if (!data.spoken || !data.text?.trim() || !currentBotEntry) return;
-        let chunk = data.text.replaceAll('\n', ' ');
-        if (/[?!]$/.test(currentBotText) && !/^\s/.test(chunk)) chunk = ' ' + chunk;
-        const span = document.createElement('span');
-        span.className = 'word-chunk';
-        span.textContent = chunk;
-        currentBotEntry.appendChild(span);
-        currentBotText += chunk;
-        transcript.scrollTop = transcript.scrollHeight;
+        if (!data.spoken || !data.text?.trim()) return;
+        if (!botEntry) botEntry = createEntry('choco');
+        appendChunk(botEntry, data.text);
       },
       onServerMessage: (msg) => {
         if (msg?.t === 'session-ending') {
           const reason = msg.d?.reason;
           const labels = {
-            'sleep-word':   'Choco is going to sleep. Goodbye!',
-            'echo-loop':    'Echo detected — ending session.',
+            'sleep-word': 'Choco is going to sleep. Goodbye!',
+            'echo-loop': 'Echo detected — ending session.',
             'idle-timeout': 'Session timed out.',
-            'user-ended':   'Session ended.',
+            'user-ended': 'Session ended.',
           };
           addSystemMsg(labels[reason] ?? 'Session ending...');
           setCharacterState('sleeping');
@@ -281,8 +282,8 @@ async function endSession() {
 function onSessionEnded() {
   const wasActive = !!client;
   client = null;
-  currentBotEntry = null;
-  currentBotText = '';
+  botEntry = null;
+  userEntry = null;
   if (!wasActive) return;
 
   setCharacterState('sleeping');
