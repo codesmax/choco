@@ -212,7 +212,6 @@ async function startSession() {
         audio.srcObject = new MediaStream([track]);
       },
       onBotStartedSpeaking: () => {
-        if (!botEntry) botEntry = createEntry('choco');
         setCharacterState('speaking');
         setStatus('Choco is speaking...');
       },
