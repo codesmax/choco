@@ -29,7 +29,7 @@ provider: "openai"
 providers:
   openai:
     api_key_env: "OPENAI_API_KEY"
-    model: "gpt-realtime-mini-2025-12-15"
+    model: "gpt-realtime-2.1-mini"
     voice: "marin"
     transcription_model: "gpt-4o-mini-transcribe"
     noise_reduction: "far_field"  # "near_field" | "far_field" | null
