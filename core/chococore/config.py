@@ -51,6 +51,17 @@ LOG_LEVEL = os.getenv('CHOCO_LOG_LEVEL', 'INFO').upper()
 PIPECAT_LOG_LEVEL = os.getenv('PIPECAT_LOG_LEVEL', 'WARNING').upper()
 USE_DISPLAY = os.getenv('CHOCO_DISPLAY', '0') == '1' and _has_display()
 PROFILE = os.getenv('CHOCO_PROFILE', CONFIG.profile or 'default')
+
+# Fail fast on an undefined active profile. With Box's default_box=True a missing
+# key silently yields None (and []-access even inserts a phantom key), which
+# otherwise surfaces later as a cryptic TypeError deep in app code.
+if PROFILE not in CONFIG.profiles or CONFIG.profiles[PROFILE] is None:
+    available = ', '.join(CONFIG.profiles.keys())
+    raise SystemExit(
+        f"Active profile '{PROFILE}' is not defined under 'profiles:' in config.yml "
+        f"(available: {available or 'none'}). Set 'profile:' in config.yml or the "
+        f"CHOCO_PROFILE environment variable to a defined profile."
+    )
 PROVIDER = os.getenv('CHOCO_PROVIDER', CONFIG.provider or 'openai')
 
 # Journald adds its own timestamps — omit them from our format when running under systemd
