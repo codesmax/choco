@@ -1,5 +1,5 @@
 # Active profile to use for sessions
-profile: "default"
+profile: "older_child"
 profiles:
   older_child:
     name: "User 1"
